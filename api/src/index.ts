@@ -1,10 +1,20 @@
 import { Elysia, Context } from "elysia";
+import { cors } from "@elysiajs/cors";
 import { openapi } from "@elysia/openapi";
 import { OpenAPI } from "../libs/auth";
 import { betterAuth } from "./middleware/auth.middleware";
 import authRoutes from "./auth/auth.route";
 
 const app = new Elysia({ prefix: "/api" })
+  .use(
+    cors({
+      origin: process.env.NODE_ENV === "production"
+        ? [process.env.FRONTEND_URL || ""]
+        : true,
+      credentials: true,
+      allowedHeaders: ["Content-Type", "Authorization"],
+    }),
+  )
   .use(
     openapi({
       documentation: {
