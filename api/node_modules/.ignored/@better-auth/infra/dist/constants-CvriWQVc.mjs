@@ -1,0 +1,20 @@
+import { env } from "@better-auth/core/env";
+//#region src/constants.ts
+/**
+* Infrastructure API URL
+* Can be overridden via plugin config or BETTER_AUTH_API_URL env var for local development
+*/
+const INFRA_API_URL = env.BETTER_AUTH_API_URL || "https://dash.better-auth.com";
+/**
+* KV Storage URL
+* Can be overridden via plugin config or BETTER_AUTH_KV_URL env var for local development
+*/
+const INFRA_KV_URL = env.BETTER_AUTH_KV_URL || "https://kv.better-auth.com";
+/** Timeout for KV HTTP operations (ms) */
+const KV_TIMEOUT_MS = 1e3;
+/**
+* Timeout for API calls HTTP calls (ms)
+*/
+const INFRA_API_TIMEOUT_MS = 3e3;
+//#endregion
+export { KV_TIMEOUT_MS as i, INFRA_API_URL as n, INFRA_KV_URL as r, INFRA_API_TIMEOUT_MS as t };
