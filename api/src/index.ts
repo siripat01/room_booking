@@ -2,6 +2,7 @@ import { Elysia, Context } from "elysia";
 import { openapi } from "@elysia/openapi";
 import { OpenAPI } from "../libs/auth";
 import { betterAuth } from "./middleware/auth.middleware";
+import authRoutes from "./auth/auth.route";
 
 const app = new Elysia({ prefix: "/api" })
   .use(
@@ -13,6 +14,7 @@ const app = new Elysia({ prefix: "/api" })
     }),
   )
   .use(betterAuth)
+  .use(authRoutes)
   .get("/", () => "Hello Elysia")
   .listen(3000);
 
