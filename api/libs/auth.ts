@@ -18,13 +18,6 @@ export const auth = betterAuth({
   basePath: "/api/auth",
   plugins: [
     openAPI(),
-    // dash({
-    //   apiKey: process.env.BETTER_AUTH_API_KEY,
-    //   activityTracking: {
-    //     enabled: true,
-    //     updateInterval: 300000, // Update interval in ms (default: 5 minutes)
-    //   },
-    // }),
   ],
 
   emailAndPassword: {
@@ -44,11 +37,8 @@ export const auth = betterAuth({
   databaseHooks: {
     user: {
       create: {
-        // ดักเช็ค "ก่อน" ที่จะทำการสร้าง User ใหม่ในระบบ
         before: async (user) => {
-          // ตรวจสอบว่า email ลงท้ายด้วย @kmitl.ac.th หรือไม่
           if (!user.email.endsWith("@kmitl.ac.th")) {
-            // ส่ง Error กลับไปหาผู้ใช้ และยกเลิกการสมัครสมาชิก
             throw new APIError("BAD_REQUEST", {
               message: "Only KMITL email accounts are allowed to sign up.",
             });
