@@ -1,16 +1,21 @@
-import { betterAuth } from "better-auth";
+import { APIError, betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import prisma from "./db";
 import { openAPI } from "better-auth/plugins";
 import { hashPassword, verifyPassword } from "../utils/password";
 import { dash } from "@better-auth/infra";
+import { redirect } from "elysia";
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, {
     provider: "postgresql",
   }),
-  baseURL: "http://localhost:3000",
-  basePath: "/auth",
+  baseURL: {
+    allowedHosts: ["http://localhost:3000", "http://localhost:3001"],
+    protocol: "http",
+    fallback: "http://localhost:3001",
+  },
+  basePath: "/api/auth",
   plugins: [
     openAPI(),
     // dash({
@@ -34,6 +39,24 @@ export const auth = betterAuth({
     google: {
       clientId: process.env.GOOGLE_CLIENT_ID as string,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
+    },
+  },
+  databaseHooks: {
+    user: {
+      create: {
+        // ดักเช็ค "ก่อน" ที่จะทำการสร้าง User ใหม่ในระบบ
+        before: async (user) => {
+          // ตรวจสอบว่า email ลงท้ายด้วย @kmitl.ac.th หรือไม่
+          if (!user.email.endsWith("@kmitl.ac.th")) {
+            // ส่ง Error กลับไปหาผู้ใช้ และยกเลิกการสมัครสมาชิก
+            throw new APIError("BAD_REQUEST", {
+              message: "Only KMITL email accounts are allowed to sign up.",
+            });
+          }
+
+          return { data: user };
+        },
+      },
     },
   },
 });
