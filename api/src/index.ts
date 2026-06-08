@@ -9,7 +9,7 @@ const app = new Elysia({ prefix: "/api" })
   .use(
     cors({
       origin: process.env.NODE_ENV === "production"
-        ? [process.env.FRONTEND_URL || ""]
+        ? [process.env.FRONTEND_URL || "http://localhost:3001"]
         : true,
       credentials: true,
       allowedHeaders: ["Content-Type", "Authorization"],
