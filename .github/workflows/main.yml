@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - development
+  pull_request:
+    branches:
+      - main
+      - development
+
+jobs:
+  backend-ci:
+    name: Backend CI (API)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Dependencies
+        working-directory: api
+        run: bun install
+
+      - name: Generate Prisma Client
+        working-directory: api
+        run: bun --bun run prisma generate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: Type Check Backend
+        working-directory: api
+        run: bun x tsc --noEmit --ignoreDeprecations 6.0
+
+  frontend-ci:
+    name: Frontend CI (Web)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Install Dependencies
+        working-directory: web
+        run: pnpm install
+
+      - name: Build Frontend
+        working-directory: web
+        run: pnpm run build

@@ -11,4 +11,4 @@ const getApiUrl = () => {
   return process.env.API_URL || "http://localhost:3000";
 };
 
-export const api = treaty<App>(getApiUrl());
+export const app = treaty<App>(getApiUrl());
