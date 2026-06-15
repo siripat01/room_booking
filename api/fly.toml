@@ -1,0 +1,40 @@
+# Fly.io Configuration
+app = "room-booking-api"
+primary_region = "sin"
+
+[build]
+  image = "room-booking-api:latest"
+
+[env]
+  NODE_ENV = "production"
+  BUN_ENV = "production"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_start_machines = true
+  auto_stop_machines = "off"
+
+[[services]]
+  protocol = "tcp"
+  internal_port = 3000
+  processes = ["app"]
+  [services.concurrency]
+    type = "connections"
+    hard_limit = 1024
+    soft_limit = 512
+
+[[statics]]
+  guest_path = "/app/public"
+  url_prefix = "/static"
+
+[checks]
+  [checks.status]
+    type = "http"
+    port = 3000
+    method = "GET"
+    path = "/api"
+    interval = "30s"
+    timeout = "5s"
+    success_threshold = 1
+    failure_threshold = 3

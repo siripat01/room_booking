@@ -2,6 +2,8 @@
 import * as fs from "node:fs";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { createServerFn } from "@tanstack/react-start";
+import { createAuthClient } from "better-auth/client";
+import { authClient } from "../lib/auth";
 
 const filePath = "count.txt";
 
@@ -24,6 +26,7 @@ const updateCount = createServerFn({ method: "POST" })
     await fs.promises.writeFile(filePath, `${count + data}`);
   });
 
+
 export const Route = createFileRoute("/")({
   component: Home,
   loader: async () => await getCount(),
@@ -36,13 +39,14 @@ function Home() {
   return (
     <button
       type="button"
-      onClick={() => {
-        updateCount({ data: 1 }).then(() => {
-          router.invalidate();
-        });
+      onClick={async () => {
+        await authClient.signIn.social({
+          provider: "google",
+          callbackURL: `${import.meta.env.VITE_FRONTEND_URL}/home`
+        })
       }}
     >
-      Add 1 to {state}?
+      login with google
     </button>
   );
 }

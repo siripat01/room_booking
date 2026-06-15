@@ -6,5 +6,10 @@
     "target": "ES2022",
     "skipLibCheck": true,
     "strictNullChecks": true,
-  },
+    "paths": {
+      "elysia": [
+        "../api/node_modules/elysia"
+      ]
+    }
+  }
 }

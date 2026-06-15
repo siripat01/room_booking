@@ -1,0 +1,17 @@
+node_modules
+pnpm-lock.yaml
+.git
+.env
+.env.local
+.env.*.local
+.next
+dist
+.venv
+__pycache__
+*.pyc
+.DS_Store
+.vscode
+.idea
+.env.example
+README.md
+LICENSE
