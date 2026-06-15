@@ -1,10 +1,11 @@
 import { APIError, betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import prisma from "./db";
-import { openAPI } from "better-auth/plugins";
+import { admin, openAPI } from "better-auth/plugins";
 import { hashPassword, verifyPassword } from "../utils/password";
-import { dash } from "@better-auth/infra";
-import { redirect } from "elysia";
+
+
+import { ac, teacherRole, userRole, adminRole } from "./permission";
 
 export const auth = betterAuth({
   database: prismaAdapter(prisma, {
@@ -13,12 +14,33 @@ export const auth = betterAuth({
   baseURL: {
     allowedHosts: ["http://localhost:3000", "http://localhost:3001"],
     protocol: "http",
-    fallback: "http://localhost:3001",
+    fallback: "http://localhost:300",
   },
+
+  trustedOrigins: [
+    process.env.FRONTEND_URL as string],
+
   basePath: "/api/auth",
   plugins: [
     openAPI(),
+    admin({
+      ac,
+      roles: {
+        userRole,
+        teacherRole,
+        adminRole,
+      },
+      adminRoles: ["adminRole"],
+      defaultRole: "userRole",
+    })
   ],
+
+  session: {
+    expiresIn: 60 * 60 * 24 * 7, // 7 วัน
+    updateAge: 60 * 60 * 24,     // อัปเดตทุก 24 ชม.
+  },
+
+  secret: process.env.BETTER_AUTH_SECRET as string,
 
   emailAndPassword: {
     enabled: true,
