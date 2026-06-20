@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { authClient } from "../lib/auth";
+import { useCurrentUser } from "../lib/useCurrentUser";
 import { app } from "../lib/api";
 import { Navbar } from "../components/Navbar";
 import { Badge } from "../components/ui/badge";
@@ -67,21 +67,15 @@ const TAB_FILTERS: { label: string; statuses: BookingStatus[] | null }[] = [
 ];
 
 function BookingsPage() {
-  const [user, setUser] = useState<{ name: string; email: string; image?: string | null } | null>(null);
+  const { user, loading: userLoading } = useCurrentUser();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState(0);
   const [cancelling, setCancelling] = useState<string | null>(null);
 
   useEffect(() => {
-    authClient.getSession().then((s) => {
-      if (!s.data?.user) {
-        window.location.href = "/";
-        return;
-      }
-      setUser(s.data.user as typeof user);
-    });
-  }, []);
+    if (!userLoading && !user) window.location.href = "/";
+  }, [user, userLoading]);
 
   useEffect(() => {
     async function fetchBookings() {

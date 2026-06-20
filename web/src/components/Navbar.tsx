@@ -1,5 +1,6 @@
 import { Link, useRouter } from "@tanstack/react-router";
 import { authClient } from "../lib/auth";
+import { roleLabel, type UserRole } from "../lib/useCurrentUser";
 import { Button } from "./ui/button";
 import {
   DropdownMenu,
@@ -8,11 +9,17 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-import { CalendarDays, Home, LogOut, User } from "lucide-react";
+import { Badge } from "./ui/badge";
+import { CalendarDays, Home, LogOut, Settings, User } from "lucide-react";
 import { toast } from "sonner";
 
 interface NavbarProps {
-  user?: { name: string; email: string; image?: string | null } | null;
+  user?: {
+    name: string;
+    email: string;
+    image?: string | null;
+    role?: UserRole | string | null;
+  } | null;
 }
 
 export function Navbar({ user }: NavbarProps) {
@@ -27,6 +34,9 @@ export function Navbar({ user }: NavbarProps) {
   const initials = user?.name
     ? user.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
     : "?";
+
+  const isAdmin = user?.role === "adminRole";
+  const isTeacher = user?.role === "teacherRole";
 
   return (
     <header className="border-b bg-background sticky top-0 z-40">
@@ -59,6 +69,16 @@ export function Navbar({ user }: NavbarProps) {
             <CalendarDays className="w-4 h-4" />
             <span className="hidden sm:inline">My Bookings</span>
           </Link>
+          {isAdmin && (
+            <Link
+              to="/admin"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+              activeProps={{ className: "text-foreground bg-accent" }}
+            >
+              <Settings className="w-4 h-4" />
+              <span className="hidden sm:inline">Admin</span>
+            </Link>
+          )}
         </nav>
 
         {/* User menu */}
@@ -73,13 +93,26 @@ export function Navbar({ user }: NavbarProps) {
                     {initials}
                   </div>
                 )}
-                <span className="hidden md:block text-sm font-medium max-w-32 truncate">{user.name}</span>
+                <div className="hidden md:flex flex-col items-start">
+                  <span className="text-sm font-medium max-w-32 truncate leading-tight">{user.name}</span>
+                  {(isAdmin || isTeacher) && (
+                    <Badge
+                      variant={isAdmin ? "default" : "secondary"}
+                      className="text-[10px] px-1.5 py-0 h-4 leading-none"
+                    >
+                      {roleLabel(user.role)}
+                    </Badge>
+                  )}
+                </div>
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-52">
               <div className="px-2 py-1.5">
                 <p className="text-sm font-medium truncate">{user.name}</p>
                 <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                <Badge variant={isAdmin ? "default" : isTeacher ? "secondary" : "outline"} className="mt-1 text-xs">
+                  {roleLabel(user.role)}
+                </Badge>
               </div>
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
@@ -88,6 +121,14 @@ export function Navbar({ user }: NavbarProps) {
                   Profile
                 </Link>
               </DropdownMenuItem>
+              {isAdmin && (
+                <DropdownMenuItem asChild>
+                  <Link to="/admin" className="flex items-center gap-2 cursor-pointer">
+                    <Settings className="w-4 h-4" />
+                    Admin Panel
+                  </Link>
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={handleSignOut}

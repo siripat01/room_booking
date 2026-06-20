@@ -1,19 +1,130 @@
 import type { PrismaClient } from "../../generated/prisma/client";
-import type { CreateBookingInput } from "../../type/booking";
+import prisma from "../../libs/db";
 
-class BookingService {
-    constructor(private prisma: PrismaClient) { }
+export class BookingService {
+  constructor(private readonly prisma: PrismaClient) {}
 
-    async createBooking(data: CreateBookingInput) {
-        try {
-            return await this.prisma.booking.create({
-                data,
-            })
-        } catch (e) {
-            console.log(e);
-            throw new Error("Failed to create booking");
-        }
-    }
+  async createBooking(data: {
+    userId: string;
+    roomId: string;
+    startTime: Date;
+    endTime: Date;
+    attendees: number;
+    purpose?: string;
+    autoConfirm: boolean;
+    approvedBy?: string;
+  }) {
+    const conflict = await this.prisma.booking.findFirst({
+      where: {
+        roomId: data.roomId,
+        status: { in: ["PENDING", "CONFIRMED", "CHECKED_IN"] },
+        AND: [
+          { startTime: { lt: data.endTime } },
+          { endTime: { gt: data.startTime } },
+        ],
+      },
+    });
+    if (conflict) throw new Error("Room already has a booking overlapping this time slot");
+
+    return this.prisma.booking.create({
+      data: {
+        userId: data.userId,
+        roomId: data.roomId,
+        startTime: data.startTime,
+        endTime: data.endTime,
+        attendees: data.attendees,
+        purpose: data.purpose,
+        status: data.autoConfirm ? "CONFIRMED" : "PENDING",
+        approvedAt: data.autoConfirm ? new Date() : undefined,
+        approvedBy: data.autoConfirm ? (data.approvedBy ?? data.userId) : undefined,
+      },
+      include: {
+        room: { select: { name: true, floor: true } },
+        user: { select: { name: true, email: true } },
+      },
+    });
+  }
+
+  async getBookings(userId: string, role: string) {
+    const isAdmin = role === "adminRole";
+    return this.prisma.booking.findMany({
+      where: isAdmin ? undefined : { userId },
+      include: {
+        room: { select: { name: true, floor: true } },
+        user: { select: { name: true, email: true, image: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+  }
+
+  async getBookingById(id: string, userId: string, role: string) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id },
+      include: {
+        room: true,
+        user: { select: { name: true, email: true, image: true } },
+      },
+    });
+    if (!booking) throw new Error("Booking not found");
+    if (role !== "adminRole" && booking.userId !== userId) throw new Error("Unauthorized");
+    return booking;
+  }
+
+  async cancelBooking(id: string, userId: string, role: string, cancelReason?: string) {
+    const booking = await this.prisma.booking.findUnique({ where: { id } });
+    if (!booking) throw new Error("Booking not found");
+    if (role !== "adminRole" && booking.userId !== userId) throw new Error("Unauthorized");
+    if (!["PENDING", "CONFIRMED"].includes(booking.status))
+      throw new Error("Cannot cancel this booking");
+
+    return this.prisma.booking.update({
+      where: { id },
+      data: { status: "CANCELLED", cancelledAt: new Date(), cancelReason },
+    });
+  }
+
+  async approveBooking(id: string, adminId: string) {
+    const booking = await this.prisma.booking.findUnique({ where: { id } });
+    if (!booking) throw new Error("Booking not found");
+    if (booking.status !== "PENDING") throw new Error("Only pending bookings can be approved");
+
+    return this.prisma.booking.update({
+      where: { id },
+      data: { status: "CONFIRMED", approvedAt: new Date(), approvedBy: adminId },
+      include: {
+        room: { select: { name: true, floor: true } },
+        user: { select: { name: true, email: true } },
+      },
+    });
+  }
+
+  async rejectBooking(id: string, adminId: string, reason: string) {
+    const booking = await this.prisma.booking.findUnique({ where: { id } });
+    if (!booking) throw new Error("Booking not found");
+    if (booking.status !== "PENDING") throw new Error("Only pending bookings can be rejected");
+
+    return this.prisma.booking.update({
+      where: { id },
+      data: { status: "REJECTED", rejectedReason: reason },
+      include: {
+        room: { select: { name: true, floor: true } },
+        user: { select: { name: true, email: true } },
+      },
+    });
+  }
+
+  async getStats() {
+    const [totalRooms, pendingBookings, totalUsers, confirmedToday] = await Promise.all([
+      this.prisma.room.count({ where: { isActive: true } }),
+      this.prisma.booking.count({ where: { status: "PENDING" } }),
+      this.prisma.user.count(),
+      this.prisma.booking.count({
+        where: {
+          status: "CONFIRMED",
+          startTime: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
+        },
+      }),
+    ]);
+    return { totalRooms, pendingBookings, totalUsers, confirmedToday };
+  }
 }
-
-export default BookingService
