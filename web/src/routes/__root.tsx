@@ -7,20 +7,14 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
+import { Toaster } from "sonner";
 
 export const Route = createRootRoute({
   head: () => ({
     meta: [
-      {
-        charSet: "utf-8",
-      },
-      {
-        name: "viewport",
-        content: "width=device-width, initial-scale=1",
-      },
-      {
-        title: "TanStack Start Starter",
-      },
+      { charSet: "utf-8" },
+      { name: "viewport", content: "width=device-width, initial-scale=1" },
+      { title: "Room Booking" },
     ],
   }),
   component: RootComponent,
@@ -30,6 +24,7 @@ function RootComponent() {
   return (
     <RootDocument>
       <Outlet />
+      <Toaster richColors position="top-right" />
     </RootDocument>
   );
 }
