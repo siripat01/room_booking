@@ -5,6 +5,8 @@ import { OpenAPI } from "../libs/auth";
 import { betterAuth } from "./middleware/auth.middleware";
 import authRoutes from "./auth/auth.route";
 import roomRoutes from "./room/room.route";
+import bookingRoutes from "./booking/booking.route";
+import userRoutes from "./user/user.route";
 
 const app = new Elysia({ prefix: "/api" })
   .use(
@@ -26,6 +28,8 @@ const app = new Elysia({ prefix: "/api" })
   )
   .use(betterAuth)
   .use(roomRoutes)
+  .use(bookingRoutes)
+  .use(userRoutes)
   .use(authRoutes)
   .all("/health", () => "Healthy as fuck")
   .all("/version", () => process.env.APP_VERSION)
