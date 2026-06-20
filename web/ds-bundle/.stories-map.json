@@ -1,0 +1,100 @@
+{
+  "global": "RoomBookingUI",
+  "pkg": "web",
+  "pkgDir": "/home/siripat/Desktop/room-booking/apps/web",
+  "extraEntries": [],
+  "exported": [],
+  "storybookStatic": null,
+  "keyRecipe": 7,
+  "cfgSliceGlobal": "a139d95ad8ab0a8ba08b44a258c54602e36090304087f48fe923c61aa5a8ae08",
+  "components": [
+    {
+      "name": "Badge",
+      "group": "general",
+      "srcSha": null,
+      "sourceKey": "0e737c32edd92382",
+      "cfgSlice": "5ff899b099eb6923833804cda955efdd69101524bec86f67dac5537cd81802e8",
+      "stories": []
+    },
+    {
+      "name": "Button",
+      "group": "general",
+      "srcSha": null,
+      "sourceKey": "ee8fc43b122def98",
+      "cfgSlice": "5ff899b099eb6923833804cda955efdd69101524bec86f67dac5537cd81802e8",
+      "stories": []
+    },
+    {
+      "name": "Card",
+      "group": "general",
+      "srcSha": null,
+      "sourceKey": "e4956770fbb75696",
+      "cfgSlice": "5ff899b099eb6923833804cda955efdd69101524bec86f67dac5537cd81802e8",
+      "stories": []
+    },
+    {
+      "name": "Checkbox",
+      "group": "general",
+      "srcSha": null,
+      "sourceKey": "b99b4759e7e982c4",
+      "cfgSlice": "5ff899b099eb6923833804cda955efdd69101524bec86f67dac5537cd81802e8",
+      "stories": []
+    },
+    {
+      "name": "Dialog",
+      "group": "general",
+      "srcSha": null,
+      "sourceKey": "5ad211459278f849",
+      "cfgSlice": "904e6935b9ee373e6c3c27e19eb64ef1a64aef5714db378a4a79506133acb053",
+      "stories": []
+    },
+    {
+      "name": "DropdownMenu",
+      "group": "general",
+      "srcSha": null,
+      "sourceKey": "ffe366252b468d88",
+      "cfgSlice": "e7d5026dde9bfc42ab2884ded79c21b64f8643f20f0c9c9653669ee768c3fd28",
+      "stories": []
+    },
+    {
+      "name": "Input",
+      "group": "general",
+      "srcSha": null,
+      "sourceKey": "dab8334d30de5fcb",
+      "cfgSlice": "5ff899b099eb6923833804cda955efdd69101524bec86f67dac5537cd81802e8",
+      "stories": []
+    },
+    {
+      "name": "Label",
+      "group": "general",
+      "srcSha": null,
+      "sourceKey": "409fc6546f0ad43c",
+      "cfgSlice": "5ff899b099eb6923833804cda955efdd69101524bec86f67dac5537cd81802e8",
+      "stories": []
+    },
+    {
+      "name": "Separator",
+      "group": "general",
+      "srcSha": null,
+      "sourceKey": "bf721c589137ecae",
+      "cfgSlice": "5ff899b099eb6923833804cda955efdd69101524bec86f67dac5537cd81802e8",
+      "stories": []
+    },
+    {
+      "name": "Sheet",
+      "group": "general",
+      "srcSha": null,
+      "sourceKey": "3444e915cd5195b7",
+      "cfgSlice": "904e6935b9ee373e6c3c27e19eb64ef1a64aef5714db378a4a79506133acb053",
+      "stories": []
+    },
+    {
+      "name": "Textarea",
+      "group": "general",
+      "srcSha": null,
+      "sourceKey": "70ddfc95ca36dc61",
+      "cfgSlice": "5ff899b099eb6923833804cda955efdd69101524bec86f67dac5537cd81802e8",
+      "stories": []
+    }
+  ]
+}
