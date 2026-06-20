@@ -1,6 +1,6 @@
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { authClient } from "../lib/auth";
+import { useCurrentUser } from "../lib/useCurrentUser";
 import { app } from "../lib/api";
 import { Navbar } from "../components/Navbar";
 import { Input } from "../components/ui/input";
@@ -65,7 +65,7 @@ type Room = {
 };
 
 function HomePage() {
-  const [user, setUser] = useState<{ name: string; email: string; image?: string | null } | null>(null);
+  const { user, loading: userLoading } = useCurrentUser();
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -74,14 +74,8 @@ function HomePage() {
   const [floorFilter, setFloorFilter] = useState("");
 
   useEffect(() => {
-    authClient.getSession().then((s) => {
-      if (!s.data?.user) {
-        window.location.href = "/";
-        return;
-      }
-      setUser(s.data.user as typeof user);
-    });
-  }, []);
+    if (!userLoading && !user) window.location.href = "/";
+  }, [user, userLoading]);
 
   useEffect(() => {
     async function fetchRooms() {
