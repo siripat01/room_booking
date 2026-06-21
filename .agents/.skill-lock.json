@@ -1,0 +1,15 @@
+{
+  "version": 3,
+  "skills": {
+    "elysiajs": {
+      "source": "elysiajs/skills",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/elysiajs/skills.git",
+      "skillPath": "elysia/SKILL.md",
+      "skillFolderHash": "067301d49f2a392d2994548ae686ff45c5424ba9",
+      "installedAt": "2026-06-21T12:57:59.286Z",
+      "updatedAt": "2026-06-21T12:57:59.286Z"
+    }
+  },
+  "dismissed": {}
+}

@@ -1,9 +1,5 @@
 {
   "buildCommand": "pnpm build",
   "installCommand": "pnpm install",
-  "outputDirectory": "dist/client",
-  "framework": null,
-  "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
-  ]
+  "framework": "tanstack-start"
 }
