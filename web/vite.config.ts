@@ -13,7 +13,11 @@ export default defineConfig({
   },
   plugins: [
     tailwindcss(),
-    tanstackStart(),
+    tanstackStart({
+      client: {
+        entry: "./src/entry-client.tsx",
+      },
+    }),
     // react's vite plugin must come after start's vite plugin
     viteReact(),
   ],
