@@ -1,5 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { devicesQuery, roomsQuery, type AdminDevice } from "../../lib/queries";
 import { app } from "../../lib/api";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -12,24 +14,18 @@ import { DeviceKeyDisplayModal } from "../../components/devices/DeviceKeyDisplay
 import { RotateKeyConfirmModal } from "../../components/devices/RotateKeyConfirmModal";
 import { DeleteConfirmModal } from "../../components/devices/DeleteConfirmModal";
 import { getDeviceStatus, formatRelativeTime, getStatusBadgeVariant } from "../../lib/device-utils";
-import { getMockDevices, getMockRooms } from "../../data/mock-devices";
 import type { Device, Room } from "../../types/device";
 
 export const Route = createFileRoute("/admin/devices")({
+  loader: ({ context: { queryClient } }) =>
+    Promise.all([
+      queryClient.ensureQueryData(devicesQuery()),
+      queryClient.ensureQueryData(roomsQuery()),
+    ]),
   component: AdminDevicesPage,
 });
 
-type ApiRoom = {
-  id: string;
-  name: string;
-  description?: string | null;
-  capacity: number;
-  floor: string;
-  amenities: string[];
-  isActive: boolean;
-};
-
-function computeStats(devices: Device[]) {
+function computeStats(devices: AdminDevice[]) {
   const oneMinAgo = new Date(Date.now() - 60_000);
   let online = 0, offline = 0, unassigned = 0;
   for (const d of devices) {
@@ -41,148 +37,134 @@ function computeStats(devices: Device[]) {
 }
 
 function AdminDevicesPage() {
-  const [devices, setDevices] = useState<Device[]>([]);
-  const [rooms, setRooms] = useState<ApiRoom[]>([]);
-  const [loading, setLoading] = useState(true);
+  const qc = useQueryClient();
 
   const [formOpen, setFormOpen] = useState(false);
-  const [editTarget, setEditTarget] = useState<Device | null>(null);
-
+  const [editTarget, setEditTarget] = useState<AdminDevice | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
-  const [detailDevice, setDetailDevice] = useState<Device | null>(null);
-
+  const [detailDevice, setDetailDevice] = useState<AdminDevice | null>(null);
   const [keyModalOpen, setKeyModalOpen] = useState(false);
   const [newKey, setNewKey] = useState("");
   const [newKeyDeviceName, setNewKeyDeviceName] = useState("");
-
   const [rotateOpen, setRotateOpen] = useState(false);
-  const [rotateTarget, setRotateTarget] = useState<Device | null>(null);
-
+  const [rotateTarget, setRotateTarget] = useState<AdminDevice | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<Device | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<AdminDevice | null>(null);
 
-  useEffect(() => { load(); }, []);
+  const { data: devices = [], isLoading: loadingDevices } = useQuery(devicesQuery());
+  const { data: apiRooms = [] } = useQuery(roomsQuery());
+  const loading = loadingDevices;
 
-  async function load() {
-    try {
-      const [devicesRes, roomsRes] = await Promise.all([
-        (app.api as any).devices.get(),
-        app.api.rooms.get(),
-      ]);
-      if (devicesRes.data) setDevices(devicesRes.data as Device[]);
-      if (roomsRes.data) setRooms(roomsRes.data as ApiRoom[]);
-    } catch {
-      setDevices(getMockDevices());
-      setRooms(getMockRooms() as unknown as ApiRoom[]);
-    } finally {
-      setLoading(false);
+  const createMutation = useMutation({
+    mutationFn: async (data: { name: string; roomId: string | null }) => {
+      const { data: res, error } = await (app.api as any).devices.post({ name: data.name, roomId: data.roomId });
+      if (error) throw error;
+      return res;
+    },
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["admin", "devices"] });
+      if (res?.deviceKey) {
+        setNewKey(res.deviceKey);
+        setNewKeyDeviceName(res.device?.name ?? "");
+        setKeyModalOpen(true);
+      }
+      toast.success("Kiosk created");
+    },
+    onError: () => toast.error("Failed to create Kiosk"),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: { name: string; roomId: string | null } }) => {
+      const { error } = await (app.api as any).devices[id].put(data);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "devices"] });
+      toast.success("Kiosk updated");
+    },
+    onError: () => toast.error("Failed to update Kiosk"),
+  });
+
+  const rotateKeyMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { data, error } = await (app.api as any).devices[id]["rotate-key"].patch();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      if (data?.deviceKey) {
+        setNewKey(data.deviceKey);
+        setNewKeyDeviceName(rotateTarget?.name ?? "");
+        setKeyModalOpen(true);
+      }
+      toast.success("Device key rotated");
+    },
+    onError: () => toast.error("Failed to rotate key"),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await (app.api as any).devices[id].delete();
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "devices"] });
+      if (detailDevice?.id === deleteTarget?.id) setDetailOpen(false);
+      toast.success("Kiosk deleted");
+      setDeleteTarget(null);
+      setDeleteOpen(false);
+    },
+    onError: () => toast.error("Failed to delete Kiosk"),
+  });
+
+  async function handleFormSubmit(data: { name: string; roomId: string | null }) {
+    if (editTarget) {
+      updateMutation.mutate({ id: editTarget.id, data });
+    } else {
+      createMutation.mutate(data);
     }
+    setFormOpen(false);
   }
 
-  const roomsForForm: Room[] = rooms.map((r) => ({
+  const roomsForForm: Room[] = apiRooms.map((r) => ({
     ...r,
     description: r.description ?? null,
     createdAt: "",
     updatedAt: "",
-    device: devices.find((d) => d.roomId === r.id) ?? null,
+    device: (devices as AdminDevice[]).find((d) => d.roomId === r.id)
+      ? { id: "", name: "", roomId: r.id, isActive: true, lastSeenAt: null, createdAt: "", updatedAt: "", deviceKey: "", room: null }
+      : null,
   }));
 
-  async function handleFormSubmit(data: { name: string; roomId: string | null }) {
-    try {
-      if (editTarget) {
-        const { data: updated } = await (app.api as any).devices[editTarget.id].put({
-          name: data.name,
-          roomId: data.roomId,
-        });
-        if (updated) setDevices((prev) => prev.map((d) => d.id === editTarget.id ? (updated as Device) : d));
-        toast.success("อัปเดต Kiosk แล้ว");
-      } else {
-        const { data: res } = await (app.api as any).devices.post({ name: data.name, roomId: data.roomId });
-        if (res) {
-          setDevices((prev) => [...prev, res.device as Device]);
-          setNewKey(res.deviceKey);
-          setNewKeyDeviceName(data.name);
-          setKeyModalOpen(true);
-        }
-        toast.success("สร้าง Kiosk แล้ว");
-      }
-    } catch {
-      toast.error(editTarget ? "อัปเดต Kiosk ไม่สำเร็จ" : "สร้าง Kiosk ไม่สำเร็จ");
-    }
-  }
-
-  async function handleRotateKey() {
-    if (!rotateTarget) return;
-    try {
-      const { data } = await (app.api as any).devices[rotateTarget.id]["rotate-key"].patch();
-      if (data?.deviceKey) {
-        setNewKey(data.deviceKey);
-        setNewKeyDeviceName(rotateTarget.name);
-        setKeyModalOpen(true);
-      }
-      toast.success("สร้าง Device Key ใหม่แล้ว");
-    } catch {
-      toast.error("ไม่สามารถ Rotate Key ได้");
-    }
-  }
-
-  async function handleDelete() {
-    if (!deleteTarget) return;
-    try {
-      await (app.api as any).devices[deleteTarget.id].delete();
-      setDevices((prev) => prev.filter((d) => d.id !== deleteTarget.id));
-      if (detailDevice?.id === deleteTarget.id) setDetailOpen(false);
-      toast.success("ลบ Kiosk แล้ว");
-    } catch {
-      toast.error("ลบ Kiosk ไม่สำเร็จ");
-    }
-  }
-
-  function openCreate() {
-    setEditTarget(null);
-    setFormOpen(true);
-  }
-
-  function openEdit(device: Device) {
-    setEditTarget(device);
-    setFormOpen(true);
-  }
-
-  function openDetail(device: Device) {
-    setDetailDevice(device);
-    setDetailOpen(true);
-  }
-
-  function openRotate(device: Device) {
-    setDetailOpen(false);
-    setRotateTarget(device);
-    setRotateOpen(true);
-  }
-
-  function openDelete(device: Device) {
-    setDetailOpen(false);
-    setDeleteTarget(device);
-    setDeleteOpen(true);
-  }
-
-  const stats = computeStats(devices);
-
+  const stats = computeStats(devices as AdminDevice[]);
   const STAT_CARDS = [
-    { label: "ทั้งหมด", value: stats.total, color: "text-blue-600" },
+    { label: "Total", value: stats.total, color: "text-blue-600" },
     { label: "Online", value: stats.online, color: "text-green-600" },
     { label: "Offline", value: stats.offline, color: "text-red-600" },
-    { label: "ยังไม่ผูกห้อง", value: stats.unassigned, color: "text-yellow-600" },
+    { label: "Unassigned", value: stats.unassigned, color: "text-yellow-600" },
   ];
+
+  const toDevice = (d: AdminDevice): Device => ({
+    id: d.id,
+    name: d.name,
+    roomId: d.roomId ?? null,
+    isActive: d.isActive,
+    lastSeenAt: d.lastSeenAt ?? null,
+    createdAt: d.createdAt,
+    updatedAt: "",
+    deviceKey: "",
+    room: d.room ? { ...d.room, description: null, capacity: 0, amenities: [], isActive: true, createdAt: "", updatedAt: "", device: null } : null,
+  });
 
   return (
     <div className="p-8">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold">Devices</h1>
-          <p className="text-muted-foreground">จัดการ Kiosk หน้าห้องประชุม</p>
+          <p className="text-muted-foreground">Manage room kiosk devices</p>
         </div>
-        <Button onClick={openCreate} className="flex items-center gap-2">
-          <Plus className="w-4 h-4" /> เพิ่ม Kiosk
+        <Button onClick={() => { setEditTarget(null); setFormOpen(true); }} className="flex items-center gap-2">
+          <Plus className="w-4 h-4" /> Add Kiosk
         </Button>
       </div>
 
@@ -208,33 +190,31 @@ function AdminDevicesPage() {
       ) : devices.length === 0 ? (
         <div className="text-center py-20 text-muted-foreground">
           <Cpu className="w-10 h-10 mx-auto mb-2 opacity-30" />
-          <p className="text-sm mb-3">ยังไม่มี Kiosk</p>
-          <Button onClick={openCreate} size="sm">เพิ่ม Kiosk แรก</Button>
+          <p className="text-sm mb-3">No kiosks yet</p>
+          <Button onClick={() => { setEditTarget(null); setFormOpen(true); }} size="sm">Add your first kiosk</Button>
         </div>
       ) : (
         <div className="rounded-lg border bg-background overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-secondary/50">
               <tr>
-                {["ชื่อ Kiosk", "สถานะ", "ห้องที่ผูก", "เห็นล่าสุด", "Actions"].map((h) => (
+                {["Name", "Status", "Room", "Last Seen", "Actions"].map((h) => (
                   <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y">
-              {devices.map((device) => {
-                const status = getDeviceStatus(device);
+              {(devices as AdminDevice[]).map((device) => {
+                const d = toDevice(device);
+                const status = getDeviceStatus(d);
                 return (
-                  <tr
-                    key={device.id}
-                    className="hover:bg-secondary/20 transition-colors cursor-pointer"
-                    onClick={() => openDetail(device)}
-                  >
+                  <tr key={device.id} className="hover:bg-secondary/20 transition-colors cursor-pointer"
+                    onClick={() => { setDetailDevice(device); setDetailOpen(true); }}>
                     <td className="px-4 py-3 font-medium">{device.name}</td>
                     <td className="px-4 py-3">
                       <Badge variant={getStatusBadgeVariant(status)} className="gap-1.5">
                         <span className="h-1.5 w-1.5 rounded-full bg-white/80" />
-                        {status === "online" ? "Online" : status === "offline" ? "Offline" : "ไม่ทราบ"}
+                        {status === "online" ? "Online" : status === "offline" ? "Offline" : "Unknown"}
                       </Badge>
                     </td>
                     <td className="px-4 py-3">
@@ -244,26 +224,26 @@ function AdminDevicesPage() {
                           <span className="text-muted-foreground text-xs">({device.room.floor})</span>
                         </span>
                       ) : (
-                        <span className="text-muted-foreground">ยังไม่ผูกห้อง</span>
+                        <span className="text-muted-foreground">Unassigned</span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground text-xs">
-                      {formatRelativeTime(device.lastSeenAt)}
+                      {formatRelativeTime(device.lastSeenAt ?? null)}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex gap-1.5" onClick={(e) => e.stopPropagation()}>
                         <Button size="sm" variant="outline" className="h-7 text-xs"
-                          onClick={() => openEdit(device)}>
-                          แก้ไข
+                          onClick={() => { setEditTarget(device); setFormOpen(true); }}>
+                          Edit
                         </Button>
                         <Button size="sm" variant="outline" className="h-7 text-xs"
-                          onClick={() => openRotate(device)}>
+                          onClick={() => { setRotateTarget(device); setRotateOpen(true); }}>
                           Rotate Key
                         </Button>
                         <Button size="sm" variant="outline"
                           className="h-7 text-xs text-destructive border-destructive/30 hover:bg-destructive/10"
-                          onClick={() => openDelete(device)}>
-                          ลบ
+                          onClick={() => { setDeleteTarget(device); setDeleteOpen(true); }}>
+                          Delete
                         </Button>
                       </div>
                     </td>
@@ -279,17 +259,17 @@ function AdminDevicesPage() {
         open={formOpen}
         onOpenChange={setFormOpen}
         onSubmit={handleFormSubmit}
-        device={editTarget}
+        device={editTarget ? toDevice(editTarget) : null}
         rooms={roomsForForm}
       />
 
       <DeviceDetailSheet
         open={detailOpen}
         onOpenChange={setDetailOpen}
-        device={detailDevice ? { ...detailDevice, connectionHistory: [] } : null}
-        onEdit={() => { setDetailOpen(false); if (detailDevice) openEdit(detailDevice); }}
-        onRotateKey={() => { if (detailDevice) openRotate(detailDevice); }}
-        onDelete={() => { if (detailDevice) openDelete(detailDevice); }}
+        device={detailDevice ? { ...toDevice(detailDevice), connectionHistory: [] } : null}
+        onEdit={() => { setDetailOpen(false); if (detailDevice) { setEditTarget(detailDevice); setFormOpen(true); } }}
+        onRotateKey={() => { if (detailDevice) { setRotateTarget(detailDevice); setRotateOpen(true); } }}
+        onDelete={() => { if (detailDevice) { setDeleteTarget(detailDevice); setDeleteOpen(true); } }}
         onOpenKiosk={() => {
           if (detailDevice?.roomId) window.open(`/display/${detailDevice.roomId}`, "_blank");
         }}
@@ -307,14 +287,14 @@ function AdminDevicesPage() {
         open={rotateOpen}
         onOpenChange={setRotateOpen}
         deviceName={rotateTarget?.name ?? ""}
-        onConfirm={handleRotateKey}
+        onConfirm={() => rotateTarget && rotateKeyMutation.mutate(rotateTarget.id)}
       />
 
       <DeleteConfirmModal
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
         deviceName={deleteTarget?.name ?? ""}
-        onConfirm={handleDelete}
+        onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
       />
     </div>
   );

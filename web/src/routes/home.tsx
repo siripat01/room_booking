@@ -1,7 +1,8 @@
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useCurrentUser } from "../lib/useCurrentUser";
-import { app } from "../lib/api";
+import { roomsQuery, sessionQuery, type Room } from "../lib/queries";
 import { Navbar } from "../components/Navbar";
 import { Input } from "../components/ui/input";
 import { Badge } from "../components/ui/badge";
@@ -27,6 +28,12 @@ import {
 } from "lucide-react";
 
 export const Route = createFileRoute("/home")({
+  beforeLoad: async ({ context: { queryClient } }) => {
+    const user = await queryClient.ensureQueryData(sessionQuery());
+    if (!user) throw redirect({ to: "/" });
+  },
+  loader: ({ context: { queryClient } }) =>
+    queryClient.ensureQueryData(roomsQuery()),
   component: HomePage,
 });
 
@@ -54,42 +61,13 @@ const CAPACITY_FILTERS = [
   { label: "20+", value: 999 },
 ];
 
-type Room = {
-  id: string;
-  name: string;
-  description?: string | null;
-  capacity: number;
-  floor: string;
-  amenities: string[];
-  isActive: boolean;
-};
-
 function HomePage() {
-  const { user, loading: userLoading } = useCurrentUser();
-  const [rooms, setRooms] = useState<Room[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { user } = useCurrentUser();
+  const { data: rooms = [], isLoading: loading } = useQuery(roomsQuery());
   const [search, setSearch] = useState("");
   const [capacityFilter, setCapacityFilter] = useState(0);
   const [amenityFilter, setAmenityFilter] = useState<string[]>([]);
   const [floorFilter, setFloorFilter] = useState("");
-
-  useEffect(() => {
-    if (!userLoading && !user) window.location.href = "/";
-  }, [user, userLoading]);
-
-  useEffect(() => {
-    async function fetchRooms() {
-      try {
-        const { data } = await app.api.rooms.get();
-        if (data) setRooms(data as Room[]);
-      } catch {
-        // silently ignore — backend may not be running
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchRooms();
-  }, []);
 
   const floors = Array.from(new Set(rooms.map((r) => r.floor))).sort();
   const allAmenities = Array.from(new Set(rooms.flatMap((r) => r.amenities)));
@@ -110,15 +88,7 @@ function HomePage() {
     );
   }
 
-  // Demo rooms when no backend available
-  const displayRooms: Room[] = filtered.length > 0 || rooms.length > 0 ? filtered : DEMO_ROOMS.filter((room) => {
-    if (search && !room.name.toLowerCase().includes(search.toLowerCase())) return false;
-    if (floorFilter && room.floor !== floorFilter) return false;
-    if (amenityFilter.length > 0 && !amenityFilter.every((a) => room.amenities.includes(a))) return false;
-    return true;
-  });
-
-  const isDemo = rooms.length === 0 && !loading;
+  const displayRooms = filtered;
 
   return (
     <div className="min-h-screen bg-background">
@@ -130,12 +100,6 @@ function HomePage() {
           <h1 className="text-2xl font-bold mb-1">Find a Room</h1>
           <p className="text-muted-foreground">Browse and book available meeting rooms</p>
         </div>
-
-        {isDemo && (
-          <div className="mb-6 rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800">
-            Showing demo data — connect your backend to see live rooms.
-          </div>
-        )}
 
         {/* Search + filters */}
         <div className="flex flex-col gap-4 mb-8">

@@ -9,10 +9,27 @@ const bookingRoutes = new Elysia({ prefix: "/bookings" })
     .use(betterAuth)
     .get(
         "/",
-        async ({ user }) => {
-            return bookingService.getBookings(user.id, user.role ?? "userRole");
+        async ({ user, query }) => {
+            return bookingService.getBookings(user.id, user.role ?? "userRole", {
+                status: query.status,
+                roomId: query.roomId,
+                userId: query.userId,
+                date: query.date,
+                page: query.page ? Number(query.page) : undefined,
+                limit: query.limit ? Number(query.limit) : undefined,
+            });
         },
-        { auth: true },
+        {
+            auth: true,
+            query: t.Object({
+                status: t.Optional(t.String()),
+                roomId: t.Optional(t.String()),
+                userId: t.Optional(t.String()),
+                date: t.Optional(t.String()),
+                page: t.Optional(t.String()),
+                limit: t.Optional(t.String()),
+            }),
+        },
     )
     .get(
         "/stats",
@@ -113,6 +130,14 @@ const bookingRoutes = new Elysia({ prefix: "/bookings" })
             auth: true,
             body: t.Object({ reason: t.String() }),
         },
+    )
+    .delete(
+        "/:id",
+        async ({ user, params: { id }, status }) => {
+            if (user.role !== "adminRole") return status(403);
+            return bookingService.forceDeleteBooking(id);
+        },
+        { auth: true },
     );
 
 export default bookingRoutes;

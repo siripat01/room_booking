@@ -8,6 +8,7 @@ import roomRoutes from "./room/room.route";
 import bookingRoutes from "./booking/booking.route";
 import userRoutes from "./user/user.route";
 import { deviceRoutes } from "./device/device.route";
+import reportRoutes from "./report/report.route";
 
 const app = new Elysia({ prefix: "/api" })
   .use(
@@ -32,6 +33,7 @@ const app = new Elysia({ prefix: "/api" })
   .use(bookingRoutes)
   .use(userRoutes)
   .use(deviceRoutes)
+  .use(reportRoutes)
   .use(authRoutes)
   .all("/health", () => "Healthy as fuck")
   .all("/version", () => process.env.APP_VERSION)

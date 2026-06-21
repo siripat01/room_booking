@@ -1,5 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { roomsQuery, type Room } from "../../lib/queries";
 import { app } from "../../lib/api";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -18,18 +20,10 @@ import { Building2, Pencil, Trash2, Plus, Users, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/rooms")({
+  loader: ({ context: { queryClient } }) =>
+    queryClient.ensureQueryData(roomsQuery()),
   component: AdminRoomsPage,
 });
-
-type Room = {
-  id: string;
-  name: string;
-  description?: string | null;
-  capacity: number;
-  floor: string;
-  amenities: string[];
-  isActive: boolean;
-};
 
 const AMENITY_OPTIONS = [
   { value: "projector", label: "Projector" },
@@ -42,27 +36,44 @@ const AMENITY_OPTIONS = [
 const EMPTY_FORM = { name: "", description: "", capacity: "10", floor: "", amenities: [] as string[] };
 
 function AdminRoomsPage() {
-  const [rooms, setRooms] = useState<Room[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const qc = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Room | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Room | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
 
-  useEffect(() => { load(); }, []);
+  const { data: rooms = [], isLoading: loading } = useQuery(roomsQuery());
 
-  async function load() {
-    try {
-      const { data } = await app.api.rooms.get();
-      if (data) setRooms(data as Room[]);
-    } catch {
-      setRooms(DEMO_ROOMS);
-    } finally {
-      setLoading(false);
-    }
-  }
+  const saveMutation = useMutation({
+    mutationFn: async (payload: { name: string; description?: string; capacity: number; floor: string; amenities: string[] }) => {
+      if (editTarget) {
+        const { error } = await (app.api.rooms as any)[editTarget.id].put(payload);
+        if (error) throw error;
+      } else {
+        const { error } = await app.api.rooms.post(payload as any);
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["rooms"] });
+      toast.success(editTarget ? "Room updated" : "Room created");
+      setModalOpen(false);
+    },
+    onError: () => toast.error(editTarget ? "Failed to update room" : "Failed to create room"),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await (app.api.rooms as any)[id].delete();
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["rooms"] });
+      toast.success("Room deleted");
+      setDeleteTarget(null);
+    },
+    onError: () => toast.error("Failed to delete room"),
+  });
 
   function openCreate() {
     setEditTarget(null);
@@ -91,47 +102,15 @@ function AdminRoomsPage() {
     }));
   }
 
-  async function save() {
+  function handleSave() {
     if (!form.name.trim() || !form.floor.trim()) { toast.error("Name and floor are required"); return; }
-    setSaving(true);
-    const payload = {
+    saveMutation.mutate({
       name: form.name.trim(),
       description: form.description.trim() || undefined,
       capacity: parseInt(form.capacity) || 10,
       floor: form.floor.trim(),
       amenities: form.amenities,
-    };
-    try {
-      if (editTarget) {
-        const { data } = await (app.api.rooms as any)[editTarget.id].put(payload);
-        setRooms((prev) => prev.map((r) => r.id === editTarget.id ? { ...r, ...payload } : r));
-        toast.success("Room updated");
-      } else {
-        const { data } = await app.api.rooms.post(payload as any);
-        if (data) setRooms((prev) => [...prev, data as Room]);
-        toast.success("Room created");
-      }
-      setModalOpen(false);
-    } catch {
-      toast.error(editTarget ? "Failed to update room" : "Failed to create room");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function deleteRoom() {
-    if (!deleteTarget) return;
-    setDeletingId(deleteTarget.id);
-    try {
-      await (app.api.rooms as any)[deleteTarget.id].delete();
-      setRooms((prev) => prev.filter((r) => r.id !== deleteTarget.id));
-      toast.success("Room deleted");
-      setDeleteTarget(null);
-    } catch {
-      toast.error("Failed to delete room");
-    } finally {
-      setDeletingId(null);
-    }
+    });
   }
 
   return (
@@ -210,7 +189,6 @@ function AdminRoomsPage() {
         </div>
       )}
 
-      {/* Create / Edit modal */}
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -253,15 +231,14 @@ function AdminRoomsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button onClick={save} disabled={saving}>
-              {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+            <Button onClick={handleSave} disabled={saveMutation.isPending}>
+              {saveMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               {editTarget ? "Save Changes" : "Create Room"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Delete confirm */}
       <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
@@ -272,8 +249,9 @@ function AdminRoomsPage() {
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteTarget(null)}>Cancel</Button>
-            <Button variant="destructive" onClick={deleteRoom} disabled={!!deletingId}>
-              {deletingId && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+            <Button variant="destructive" onClick={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
+              disabled={deleteMutation.isPending}>
+              {deleteMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Delete Room
             </Button>
           </DialogFooter>
@@ -282,11 +260,3 @@ function AdminRoomsPage() {
     </div>
   );
 }
-
-const DEMO_ROOMS: Room[] = [
-  { id: "d1", name: "Conference Room A", description: "Spacious main conference room.", capacity: 20, floor: "3", amenities: ["projector", "whiteboard", "ac", "wifi"], isActive: true },
-  { id: "d2", name: "Meeting Room B", description: "Cozy room for small teams.", capacity: 8, floor: "2", amenities: ["tv", "whiteboard", "ac"], isActive: true },
-  { id: "d3", name: "Board Room", description: "Executive board room.", capacity: 12, floor: "5", amenities: ["projector", "tv", "ac", "wifi"], isActive: true },
-  { id: "d4", name: "Training Room", description: "Large room for workshops.", capacity: 30, floor: "4", amenities: ["projector", "whiteboard", "ac", "wifi"], isActive: true },
-  { id: "d5", name: "Focus Room", description: "Quiet private space.", capacity: 4, floor: "2", amenities: ["ac", "wifi"], isActive: false },
-];

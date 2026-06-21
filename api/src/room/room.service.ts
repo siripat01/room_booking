@@ -7,20 +7,45 @@ export class RoomService {
         private readonly prisma: PrismaClient,
     ) { }
 
-    async getRooms() {
-        try {
-            return this.prisma.room.findMany();
-        } catch (e) {
-            console.log(e);
-            throw new Error("Failed to get rooms");
+    async getRooms(params?: { date?: string; startTime?: string; endTime?: string; capacity?: number; amenities?: string[]; floor?: string }) {
+        const where: any = { isActive: true };
+        if (params?.floor) where.floor = params.floor;
+        if (params?.capacity) where.capacity = { gte: params.capacity };
+        if (params?.amenities?.length) where.amenities = { hasEvery: params.amenities };
+
+        const rooms = await this.prisma.room.findMany({
+            where,
+            include: { timeSlots: true },
+            orderBy: { name: "asc" },
+        });
+
+        // filter out rooms with conflicting bookings for the requested time window
+        if (params?.date && params?.startTime && params?.endTime) {
+            const start = new Date(`${params.date}T${params.startTime}:00`);
+            const end = new Date(`${params.date}T${params.endTime}:00`);
+
+            const conflicted = await this.prisma.booking.findMany({
+                where: {
+                    status: { in: ["PENDING", "CONFIRMED", "CHECKED_IN"] },
+                    startTime: { lt: end },
+                    endTime: { gt: start },
+                },
+                select: { roomId: true },
+            });
+
+            const conflictedIds = new Set(conflicted.map((b) => b.roomId));
+            return rooms.filter((r) => !conflictedIds.has(r.id));
         }
+
+        return rooms;
     }
 
     async getRoomById(id: string) {
         try {
             return await this.prisma.room.findUnique({
-                where: { id: id }
-            })
+                where: { id },
+                include: { timeSlots: true },
+            });
         } catch (e) {
             console.log(e);
             throw new Error("Failed to get room");
@@ -29,21 +54,16 @@ export class RoomService {
 
     async createRoom(data: CreateRoomInput) {
         try {
-            return await this.prisma.room.create({
-                data,
-            })
+            return await this.prisma.room.create({ data });
         } catch (e) {
             console.log(e);
             throw new Error("Failed to create room");
         }
     }
 
-    async updateRoom(id: string, data: CreateRoomInput) {
+    async updateRoom(id: string, data: Partial<CreateRoomInput>) {
         try {
-            return await this.prisma.room.update({
-                where: { id },
-                data,
-            })
+            return await this.prisma.room.update({ where: { id }, data });
         } catch (e) {
             console.log(e);
             throw new Error("Failed to update room");
@@ -52,9 +72,10 @@ export class RoomService {
 
     async deleteRoom(id: string) {
         try {
-            return await this.prisma.room.delete({
+            return await this.prisma.room.update({
                 where: { id },
-            })
+                data: { isActive: false },
+            });
         } catch (e) {
             console.log(e);
             throw new Error("Failed to delete room");
@@ -64,14 +85,13 @@ export class RoomService {
     async getRoomSchedule(id: string) {
         try {
             const today = new Date().toISOString().split('T')[0];
-
-            const bookingToday = await this.prisma.booking.findMany({
+            return await this.prisma.booking.findMany({
                 where: {
-                    createdAt: {
+                    roomId: id,
+                    startTime: {
                         gte: new Date(today),
                         lt: new Date(new Date(today).setDate(new Date(today).getDate() + 1)),
                     },
-                    roomId: id
                 },
                 select: {
                     id: true,
@@ -80,10 +100,9 @@ export class RoomService {
                     attendees: true,
                     purpose: true,
                     status: true,
-                }
-            })
-
-            return bookingToday;
+                },
+                orderBy: { startTime: "asc" },
+            });
         } catch (e) {
             console.log(e);
             throw new Error("Failed to get room schedule");
@@ -128,5 +147,56 @@ export class RoomService {
                 status: b.status,
             })),
         };
+    }
+
+    // ── Time Slots ────────────────────────────────────────────────────────────
+
+    async getTimeSlots(roomId: string) {
+        return this.prisma.timeSlot.findMany({
+            where: { roomId },
+            orderBy: { dayOfWeek: "asc" },
+        });
+    }
+
+    async replaceTimeSlots(roomId: string, slots: { dayOfWeek: string; openTime: string; closeTime: string; isActive?: boolean }[]) {
+        await this.prisma.timeSlot.deleteMany({ where: { roomId } });
+        return this.prisma.timeSlot.createMany({
+            data: slots.map((s) => ({
+                roomId,
+                dayOfWeek: s.dayOfWeek as any,
+                openTime: s.openTime,
+                closeTime: s.closeTime,
+                isActive: s.isActive ?? true,
+            })),
+        });
+    }
+
+    // ── Closures ──────────────────────────────────────────────────────────────
+
+    async getClosures(roomId: string) {
+        return this.prisma.roomClosure.findMany({
+            where: { roomId },
+            orderBy: { date: "asc" },
+        });
+    }
+
+    async createClosure(roomId: string, data: { date: string; reason?: string; allDay?: boolean; startTime?: string; endTime?: string }) {
+        return this.prisma.roomClosure.create({
+            data: {
+                roomId,
+                date: new Date(data.date),
+                reason: data.reason,
+                allDay: data.allDay ?? true,
+                startTime: data.startTime,
+                endTime: data.endTime,
+            },
+        });
+    }
+
+    async deleteClosure(closureId: string) {
+        const closure = await this.prisma.roomClosure.findUnique({ where: { id: closureId } });
+        if (!closure) throw new Error("Closure not found");
+        await this.prisma.roomClosure.delete({ where: { id: closureId } });
+        return { success: true };
     }
 }

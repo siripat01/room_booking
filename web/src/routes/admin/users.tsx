@@ -1,5 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { adminUsersQuery, type AdminUser } from "../../lib/queries";
 import { app } from "../../lib/api";
 import { roleLabel, type UserRole } from "../../lib/useCurrentUser";
 import { Badge } from "../../components/ui/badge";
@@ -17,20 +19,10 @@ import { Users, Search, Loader2, ShieldAlert, CalendarDays } from "lucide-react"
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/users")({
+  loader: ({ context: { queryClient } }) =>
+    queryClient.ensureQueryData(adminUsersQuery()),
   component: AdminUsersPage,
 });
-
-type User = {
-  id: string;
-  name: string;
-  email: string;
-  image?: string | null;
-  role?: string | null;
-  banned?: boolean | null;
-  banReason?: string | null;
-  createdAt: string;
-  _count?: { bookings: number };
-};
 
 const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
   { value: "userRole", label: "Student" },
@@ -39,24 +31,57 @@ const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
 ];
 
 function AdminUsersPage() {
-  const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
+  const qc = useQueryClient();
   const [search, setSearch] = useState("");
-  const [acting, setActing] = useState<string | null>(null);
-  const [banTarget, setBanTarget] = useState<User | null>(null);
+  const [banTarget, setBanTarget] = useState<AdminUser | null>(null);
   const [banReason, setBanReason] = useState("");
 
-  useEffect(() => { load(); }, []);
+  const { data, isLoading: loading } = useQuery(adminUsersQuery());
+  const users: AdminUser[] = (data as any)?.users ?? [];
 
-  async function load() {
-    try {
-      const { data } = await (app.api.users as any).get();
-      if (data) setUsers(data as User[]);
-    } catch {
-      setUsers(DEMO_USERS);
-    } finally {
-      setLoading(false);
-    }
+  const roleMutation = useMutation({
+    mutationFn: async ({ userId, role }: { userId: string; role: string }) => {
+      const { error } = await (app.api.users as any)[userId].role.patch({ role });
+      if (error) throw error;
+    },
+    onSuccess: (_, { role }) => {
+      qc.invalidateQueries({ queryKey: ["admin", "users"] });
+      toast.success(`Role updated to ${roleLabel(role as UserRole)}`);
+    },
+    onError: () => toast.error("Failed to update role"),
+  });
+
+  const banMutation = useMutation({
+    mutationFn: async ({ userId, reason }: { userId: string; reason: string }) => {
+      const { error } = await (app.api.users as any)[userId].ban.patch({ reason });
+      if (error) throw error;
+    },
+    onSuccess: (_, { userId }) => {
+      qc.invalidateQueries({ queryKey: ["admin", "users"] });
+      const u = users.find((u) => u.id === userId);
+      toast.success(`${u?.name ?? "User"} has been banned`);
+      setBanTarget(null);
+      setBanReason("");
+    },
+    onError: () => toast.error("Failed to ban user"),
+  });
+
+  const unbanMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      const { error } = await (app.api.users as any)[userId].unban.patch();
+      if (error) throw error;
+    },
+    onSuccess: (_, userId) => {
+      qc.invalidateQueries({ queryKey: ["admin", "users"] });
+      const u = users.find((u) => u.id === userId);
+      toast.success(`${u?.name ?? "User"} has been unbanned`);
+    },
+    onError: () => toast.error("Failed to unban user"),
+  });
+
+  function handleBan() {
+    if (!banTarget || !banReason.trim()) { toast.error("Please enter a reason"); return; }
+    banMutation.mutate({ userId: banTarget.id, reason: banReason });
   }
 
   const displayed = users.filter((u) => {
@@ -64,48 +89,6 @@ function AdminUsersPage() {
     const q = search.toLowerCase();
     return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
   });
-
-  async function changeRole(userId: string, role: string) {
-    setActing(userId);
-    try {
-      await (app.api.users as any)[userId].role.patch({ role });
-      setUsers((prev) => prev.map((u) => u.id === userId ? { ...u, role } : u));
-      toast.success(`Role updated to ${roleLabel(role as UserRole)}`);
-    } catch {
-      toast.error("Failed to update role");
-    } finally {
-      setActing(null);
-    }
-  }
-
-  async function ban() {
-    if (!banTarget || !banReason.trim()) { toast.error("Please enter a reason"); return; }
-    setActing(banTarget.id);
-    try {
-      await (app.api.users as any)[banTarget.id].ban.patch({ reason: banReason });
-      setUsers((prev) => prev.map((u) => u.id === banTarget.id ? { ...u, banned: true, banReason } : u));
-      toast.success(`${banTarget.name} has been banned`);
-      setBanTarget(null);
-      setBanReason("");
-    } catch {
-      toast.error("Failed to ban user");
-    } finally {
-      setActing(null);
-    }
-  }
-
-  async function unban(user: User) {
-    setActing(user.id);
-    try {
-      await (app.api.users as any)[user.id].unban.patch();
-      setUsers((prev) => prev.map((u) => u.id === user.id ? { ...u, banned: false, banReason: null } : u));
-      toast.success(`${user.name} has been unbanned`);
-    } catch {
-      toast.error("Failed to unban user");
-    } finally {
-      setActing(null);
-    }
-  }
 
   const initials = (name: string) =>
     name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
@@ -142,8 +125,10 @@ function AdminUsersPage() {
             </thead>
             <tbody className="divide-y">
               {displayed.map((u) => {
-                const isActing = acting === u.id;
                 const currentRole = (u.role ?? "userRole") as UserRole;
+                const isRoleActing = roleMutation.isPending && (roleMutation.variables as any)?.userId === u.id;
+                const isBanActing = (banMutation.isPending && (banMutation.variables as any)?.userId === u.id) ||
+                  (unbanMutation.isPending && unbanMutation.variables === u.id);
 
                 return (
                   <tr key={u.id} className={`hover:bg-secondary/20 transition-colors ${u.banned ? "opacity-60" : ""}`}>
@@ -163,8 +148,8 @@ function AdminUsersPage() {
                     <td className="px-4 py-3">
                       <select
                         value={currentRole}
-                        onChange={(e) => changeRole(u.id, e.target.value)}
-                        disabled={isActing}
+                        onChange={(e) => roleMutation.mutate({ userId: u.id, role: e.target.value })}
+                        disabled={isRoleActing}
                         className="h-8 rounded-md border border-input bg-background px-2 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
                       >
                         {ROLE_OPTIONS.map(({ value, label }) => (
@@ -195,13 +180,13 @@ function AdminUsersPage() {
                     </td>
                     <td className="px-4 py-3">
                       {u.banned ? (
-                        <Button size="sm" variant="outline" onClick={() => unban(u)} disabled={isActing}
-                          className="h-7 text-xs">
-                          {isActing ? <Loader2 className="w-3 h-3 animate-spin" /> : "Unban"}
+                        <Button size="sm" variant="outline" onClick={() => unbanMutation.mutate(u.id)}
+                          disabled={isBanActing} className="h-7 text-xs">
+                          {isBanActing ? <Loader2 className="w-3 h-3 animate-spin" /> : "Unban"}
                         </Button>
                       ) : (
                         <Button size="sm" variant="outline" onClick={() => { setBanTarget(u); setBanReason(""); }}
-                          disabled={isActing}
+                          disabled={isBanActing}
                           className="h-7 text-xs text-destructive border-destructive/30 hover:bg-destructive/10">
                           Ban
                         </Button>
@@ -215,7 +200,6 @@ function AdminUsersPage() {
         </div>
       )}
 
-      {/* Ban dialog */}
       <Dialog open={!!banTarget} onOpenChange={(open) => { if (!open) setBanTarget(null); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -231,8 +215,8 @@ function AdminUsersPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setBanTarget(null)}>Cancel</Button>
-            <Button variant="destructive" onClick={ban} disabled={!!acting}>
-              {acting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+            <Button variant="destructive" onClick={handleBan} disabled={banMutation.isPending}>
+              {banMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Ban User
             </Button>
           </DialogFooter>
@@ -241,11 +225,3 @@ function AdminUsersPage() {
     </div>
   );
 }
-
-const DEMO_USERS: User[] = [
-  { id: "u1", name: "Somchai Petcharat", email: "s.petcharat@kmitl.ac.th", role: "userRole", banned: false, createdAt: "2025-09-01", _count: { bookings: 12 } },
-  { id: "u2", name: "Malee Kaewsai", email: "m.kaewsai@kmitl.ac.th", role: "teacherRole", banned: false, createdAt: "2025-08-20", _count: { bookings: 34 } },
-  { id: "u3", name: "Arisa Wongsuwan", email: "a.wongsuwan@kmitl.ac.th", role: "userRole", banned: false, createdAt: "2025-09-10", _count: { bookings: 5 } },
-  { id: "u4", name: "Niran Thongchai", email: "n.thongchai@kmitl.ac.th", role: "adminRole", banned: false, createdAt: "2025-07-01", _count: { bookings: 8 } },
-  { id: "u5", name: "Pimrak Srisuk", email: "p.srisuk@kmitl.ac.th", role: "userRole", banned: true, banReason: "Repeated no-shows", createdAt: "2025-09-15", _count: { bookings: 2 } },
-];

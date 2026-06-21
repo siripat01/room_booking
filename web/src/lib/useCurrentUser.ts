@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { authClient } from "./auth";
+import { useQuery } from "@tanstack/react-query";
+import { sessionQuery } from "./queries";
 
 export type UserRole = "userRole" | "teacherRole" | "adminRole";
 
@@ -15,33 +15,8 @@ export type CurrentUser = {
 } | null;
 
 export function useCurrentUser() {
-  const [user, setUser] = useState<CurrentUser>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    authClient.getSession().then((s) => {
-      if (!s.data?.user) {
-        setUser(null);
-        setLoading(false);
-        return;
-      }
-      const u = s.data.user as any;
-      const role: UserRole = u.role ?? "userRole";
-      setUser({
-        id: u.id,
-        name: u.name,
-        email: u.email,
-        image: u.image,
-        role,
-        isAdmin: role === "adminRole",
-        isTeacher: role === "teacherRole",
-        isStudent: role === "userRole",
-      });
-      setLoading(false);
-    });
-  }, []);
-
-  return { user, loading };
+  const { data: user, isLoading: loading } = useQuery(sessionQuery());
+  return { user: user ?? null, loading };
 }
 
 export function roleLabel(role: UserRole | string | null | undefined): string {

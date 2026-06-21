@@ -46,16 +46,37 @@ export class BookingService {
     });
   }
 
-  async getBookings(userId: string, role: string) {
+  async getBookings(userId: string, role: string, params?: { status?: string; roomId?: string; userId?: string; date?: string; page?: number; limit?: number }) {
     const isAdmin = role === "adminRole";
-    return this.prisma.booking.findMany({
-      where: isAdmin ? undefined : { userId },
-      include: {
-        room: { select: { name: true, floor: true } },
-        user: { select: { name: true, email: true, image: true } },
-      },
-      orderBy: { createdAt: "desc" },
-    });
+    const page = params?.page ?? 1;
+    const limit = params?.limit ?? 20;
+    const skip = (page - 1) * limit;
+
+    const where: any = isAdmin ? {} : { userId };
+    if (params?.status) where.status = params.status;
+    if (params?.roomId) where.roomId = params.roomId;
+    if (isAdmin && params?.userId) where.userId = params.userId;
+    if (params?.date) {
+      const start = new Date(`${params.date}T00:00:00.000Z`);
+      const end = new Date(`${params.date}T23:59:59.999Z`);
+      where.startTime = { gte: start, lte: end };
+    }
+
+    const [bookings, total] = await Promise.all([
+      this.prisma.booking.findMany({
+        where,
+        include: {
+          room: { select: { name: true, floor: true } },
+          user: { select: { name: true, email: true, image: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: limit,
+      }),
+      this.prisma.booking.count({ where }),
+    ]);
+
+    return { bookings, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   async getBookingById(id: string, userId: string, role: string) {
@@ -112,6 +133,13 @@ export class BookingService {
         user: { select: { name: true, email: true } },
       },
     });
+  }
+
+  async forceDeleteBooking(id: string) {
+    const booking = await this.prisma.booking.findUnique({ where: { id } });
+    if (!booking) throw new Error("Booking not found");
+    await this.prisma.booking.delete({ where: { id } });
+    return { success: true };
   }
 
   async generateQr(id: string, userId: string, role: string) {
