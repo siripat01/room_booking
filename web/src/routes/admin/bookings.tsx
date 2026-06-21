@@ -1,5 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { adminBookingsQuery, type BookingStatus, type Booking } from "../../lib/queries";
 import { app } from "../../lib/api";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -14,29 +16,16 @@ import {
   DialogFooter,
 } from "../../components/ui/dialog";
 import {
-  CalendarDays, Clock, Users, Building2,
-  CheckCircle2, XCircle, Timer, Loader2, Search,
+  CalendarDays, Clock, Users,
+  CheckCircle2, XCircle, Loader2, Search,
 } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/bookings")({
+  loader: ({ context: { queryClient } }) =>
+    queryClient.ensureQueryData(adminBookingsQuery()),
   component: AdminBookingsPage,
 });
-
-type BookingStatus = "PENDING" | "CONFIRMED" | "CHECKED_IN" | "COMPLETED" | "CANCELLED" | "REJECTED" | "EXPIRED";
-
-type Booking = {
-  id: string;
-  status: BookingStatus;
-  startTime: string;
-  endTime: string;
-  attendees: number;
-  purpose?: string | null;
-  rejectedReason?: string | null;
-  createdAt: string;
-  room?: { name: string; floor: string } | null;
-  user?: { name: string; email: string; image?: string | null } | null;
-};
 
 const STATUS_CONFIG: Record<BookingStatus, { label: string; variant: any }> = {
   PENDING:    { label: "Pending",    variant: "warning" },
@@ -57,27 +46,44 @@ const TABS: { label: string; statuses: BookingStatus[] | null }[] = [
 ];
 
 function AdminBookingsPage() {
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [acting, setActing] = useState<string | null>(null);
+  const qc = useQueryClient();
   const [tab, setTab] = useState(0);
   const [search, setSearch] = useState("");
   const [rejectTarget, setRejectTarget] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
 
-  useEffect(() => {
-    load();
-  }, []);
+  const { data, isLoading: loading } = useQuery(adminBookingsQuery());
+  const bookings: Booking[] = (data as any)?.bookings ?? [];
 
-  async function load() {
-    try {
-      const { data } = await (app.api.bookings as any).get();
-      if (data) setBookings(data as Booking[]);
-    } catch {
-      setBookings(DEMO_BOOKINGS);
-    } finally {
-      setLoading(false);
-    }
+  const approveMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await (app.api.bookings as any)[id].approve.patch();
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin"] });
+      toast.success("Booking approved");
+    },
+    onError: () => toast.error("Failed to approve"),
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+      const { error } = await (app.api.bookings as any)[id].reject.patch({ reason });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin"] });
+      toast.success("Booking rejected");
+      setRejectTarget(null);
+      setRejectReason("");
+    },
+    onError: () => toast.error("Failed to reject"),
+  });
+
+  function handleReject() {
+    if (!rejectTarget || !rejectReason.trim()) { toast.error("Please enter a reason"); return; }
+    rejectMutation.mutate({ id: rejectTarget, reason: rejectReason });
   }
 
   const activeStatuses = TABS[tab].statuses;
@@ -94,29 +100,6 @@ function AdminBookingsPage() {
       );
     });
 
-  async function approve(id: string) {
-    setActing(id);
-    try {
-      const { data } = await (app.api.bookings as any)[id].approve.patch();
-      setBookings((prev) => prev.map((b) => b.id === id ? { ...b, status: "CONFIRMED" } : b));
-      toast.success("Booking approved");
-    } catch { toast.error("Failed to approve"); }
-    finally { setActing(null); }
-  }
-
-  async function reject() {
-    if (!rejectTarget || !rejectReason.trim()) { toast.error("Please enter a reason"); return; }
-    setActing(rejectTarget);
-    try {
-      await (app.api.bookings as any)[rejectTarget].reject.patch({ reason: rejectReason });
-      setBookings((prev) => prev.map((b) => b.id === rejectTarget ? { ...b, status: "REJECTED", rejectedReason: rejectReason } : b));
-      toast.success("Booking rejected");
-      setRejectTarget(null);
-      setRejectReason("");
-    } catch { toast.error("Failed to reject"); }
-    finally { setActing(null); }
-  }
-
   const tabCount = (statuses: BookingStatus[] | null) =>
     bookings.filter((b) => !statuses || (statuses as string[]).includes(b.status)).length;
 
@@ -127,14 +110,12 @@ function AdminBookingsPage() {
         <p className="text-muted-foreground">Review and manage all room booking requests</p>
       </div>
 
-      {/* Search */}
       <div className="relative max-w-sm mb-5">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
         <Input placeholder="Search by room, user, or purpose…" value={search}
           onChange={(e) => setSearch(e.target.value)} className="pl-9" />
       </div>
 
-      {/* Tabs */}
       <div className="flex gap-1 border-b mb-5">
         {TABS.map(({ label, statuses }, i) => (
           <button key={label} onClick={() => setTab(i)}
@@ -147,7 +128,6 @@ function AdminBookingsPage() {
         ))}
       </div>
 
-      {/* Table */}
       {loading ? (
         <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
       ) : displayed.length === 0 ? (
@@ -170,7 +150,8 @@ function AdminBookingsPage() {
                 const start = new Date(b.startTime);
                 const end = new Date(b.endTime);
                 const cfg = STATUS_CONFIG[b.status];
-                const isActing = acting === b.id;
+                const isActing = (approveMutation.isPending && approveMutation.variables === b.id) ||
+                  (rejectMutation.isPending && rejectMutation.variables?.id === b.id);
 
                 return (
                   <tr key={b.id} className="hover:bg-secondary/20 transition-colors">
@@ -212,7 +193,7 @@ function AdminBookingsPage() {
                     <td className="px-4 py-3">
                       {b.status === "PENDING" && (
                         <div className="flex gap-1.5">
-                          <Button size="sm" onClick={() => approve(b.id)} disabled={isActing}
+                          <Button size="sm" onClick={() => approveMutation.mutate(b.id)} disabled={isActing}
                             className="h-7 text-xs bg-green-600 hover:bg-green-700 px-2">
                             {isActing ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
                           </Button>
@@ -231,7 +212,6 @@ function AdminBookingsPage() {
         </div>
       )}
 
-      {/* Reject dialog */}
       <Dialog open={!!rejectTarget} onOpenChange={(open) => { if (!open) setRejectTarget(null); }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -244,8 +224,8 @@ function AdminBookingsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRejectTarget(null)}>Cancel</Button>
-            <Button variant="destructive" onClick={reject} disabled={!!acting}>
-              {acting ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : null}
+            <Button variant="destructive" onClick={handleReject} disabled={rejectMutation.isPending}>
+              {rejectMutation.isPending && <Loader2 className="w-4 h-4 animate-spin mr-1" />}
               Reject Booking
             </Button>
           </DialogFooter>
@@ -254,14 +234,3 @@ function AdminBookingsPage() {
     </div>
   );
 }
-
-const now = new Date();
-const addH = (h: number) => new Date(now.getTime() + h * 3600000).toISOString();
-const subH = (h: number) => new Date(now.getTime() - h * 3600000).toISOString();
-const DEMO_BOOKINGS: Booking[] = [
-  { id: "b1", status: "PENDING", startTime: addH(2), endTime: addH(3), attendees: 5, purpose: "Team standup", createdAt: subH(1), room: { name: "Conference Room A", floor: "3" }, user: { name: "Somchai P.", email: "s.p@kmitl.ac.th" } },
-  { id: "b2", status: "PENDING", startTime: addH(5), endTime: addH(7), attendees: 12, purpose: "Lecture: Data Structures", createdAt: subH(2), room: { name: "Training Room", floor: "4" }, user: { name: "Malee K.", email: "m.k@kmitl.ac.th" } },
-  { id: "b3", status: "CONFIRMED", startTime: addH(1), endTime: addH(2), attendees: 4, purpose: "Project review", createdAt: subH(5), room: { name: "Meeting Room B", floor: "2" }, user: { name: "Arisa W.", email: "a.w@kmitl.ac.th" } },
-  { id: "b4", status: "COMPLETED", startTime: subH(3), endTime: subH(2), attendees: 8, purpose: "Workshop", createdAt: subH(48), room: { name: "Board Room", floor: "5" }, user: { name: "Niran T.", email: "n.t@kmitl.ac.th" } },
-  { id: "b5", status: "REJECTED", startTime: addH(10), endTime: addH(12), attendees: 3, purpose: "Study session", rejectedReason: "Room unavailable for maintenance", createdAt: subH(6), room: { name: "Focus Room", floor: "2" }, user: { name: "Pimrak S.", email: "p.s@kmitl.ac.th" } },
-];

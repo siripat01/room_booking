@@ -116,6 +116,15 @@ export const adminStatsQuery = () => ({
   },
 });
 
+export const devicesQuery = () => ({
+  queryKey: ["admin", "devices"],
+  queryFn: async () => {
+    const { data, error } = await (app.api as any).devices.get();
+    if (error) throw error;
+    return data as AdminDevice[];
+  },
+});
+
 export const reportsOverviewQuery = (from?: string, to?: string) => ({
   queryKey: ["reports", "overview", from, to],
   queryFn: async () => {
@@ -200,4 +209,14 @@ export type AdminStats = {
   pendingBookings: number;
   totalUsers: number;
   confirmedToday: number;
+};
+
+export type AdminDevice = {
+  id: string;
+  name: string;
+  roomId?: string | null;
+  isActive: boolean;
+  lastSeenAt?: string | null;
+  createdAt: string;
+  room?: { id: string; name: string; floor: string } | null;
 };
