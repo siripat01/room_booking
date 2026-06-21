@@ -57,6 +57,28 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.2.x"
+
+      - name: Cache Bun Dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ hashFiles('api/bun.lockb') }}
+          restore-keys: bun-
+
+      - name: Install API Dependencies
+        working-directory: api
+        run: bun install --frozen-lockfile
+
+      - name: Generate Prisma Client
+        working-directory: api
+        run: bun --bun run prisma generate
+        env:
+          DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy"
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:

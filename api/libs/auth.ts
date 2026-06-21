@@ -59,7 +59,7 @@ export const auth = betterAuth({
   databaseHooks: {
     user: {
       create: {
-        before: async (user) => {
+        before: async (user: { email: string; [key: string]: unknown }) => {
           if (!user.email.endsWith("@kmitl.ac.th")) {
             throw new APIError("BAD_REQUEST", {
               message: "Only KMITL email accounts are allowed to sign up.",
