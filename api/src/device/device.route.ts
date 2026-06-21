@@ -7,16 +7,16 @@ const deviceService = new DeviceService(prisma);
 
 export const deviceRoutes = new Elysia()
     .use(betterAuth)
-    .get("/devices", async ({ user }) => {
-        if (user.role !== "admin") {
-            throw new Error("Unauthorized");
-        }
+    .get("/devices", async ({ user, status }) => {
+        if (user.role !== "adminRole") return status(403);
         return await deviceService.getAllDevices();
     }, { auth: true })
-    .get("/devices/:id", async ({ params: { id } }) => {
+    .get("/devices/:id", async ({ user, params: { id }, status }) => {
+        if (user.role !== "adminRole") return status(403);
         return await deviceService.getDeviceById(id);
     }, { auth: true })
-    .post("/devices", async ({ body }) => {
+    .post("/devices", async ({ user, body, status }) => {
+        if (user.role !== "adminRole") return status(403);
         return await deviceService.createDevice(body);
     }, {
         body: t.Object({
@@ -26,7 +26,8 @@ export const deviceRoutes = new Elysia()
         }),
         auth: true,
     })
-    .put("/devices/:id", async ({ params: { id }, body }) => {
+    .put("/devices/:id", async ({ user, params: { id }, body, status }) => {
+        if (user.role !== "adminRole") return status(403);
         return await deviceService.updateDevice(id, body);
     }, {
         body: t.Object({
@@ -36,9 +37,11 @@ export const deviceRoutes = new Elysia()
         }),
         auth: true,
     })
-    .patch("/devices/:id/rotate-key", async ({ params: { id } }) => {
+    .post("/devices/:id/rotate-key", async ({ user, params: { id }, status }) => {
+        if (user.role !== "adminRole") return status(403);
         return await deviceService.rotateDeviceKey(id);
     }, { auth: true })
-    .delete("/devices/:id", async ({ params: { id } }) => {
+    .delete("/devices/:id", async ({ user, params: { id }, status }) => {
+        if (user.role !== "adminRole") return status(403);
         return await deviceService.deleteDevice(id);
     }, { auth: true })
