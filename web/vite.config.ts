@@ -13,7 +13,11 @@ export default defineConfig({
   },
   plugins: [
     tailwindcss(),
-    tanstackStart(),
+    tanstackStart({
+      server: {
+        preset: "vercel",
+      },
+    }),
     // react's vite plugin must come after start's vite plugin
     viteReact(),
   ],
