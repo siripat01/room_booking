@@ -1,21 +1,12 @@
-import { StrictMode, startTransition } from "react";
-import { hydrateRoot } from "react-dom/client";
-import { StartClient } from "@tanstack/react-start/client";
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import { RouterProvider } from "@tanstack/react-router";
+import { getRouter } from "./router";
 
-// Inject empty SSR state so TanStack Router skips hydration
-// when there is no server-rendered HTML (pure SPA / Vercel static deploy)
-if (typeof window !== "undefined" && !(window as any).$_TSR) {
-  (window as any).$_TSR = {
-    router: { matches: [], dehydratedData: undefined },
-    h: () => {},
-  };
-}
+const router = getRouter();
 
-startTransition(() => {
-  hydrateRoot(
-    document,
-    <StrictMode>
-      <StartClient />
-    </StrictMode>,
-  );
-});
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
+    <RouterProvider router={router} />
+  </StrictMode>,
+);
