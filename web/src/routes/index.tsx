@@ -6,6 +6,11 @@ import { toast } from "sonner";
 import { Building2, CalendarDays, CheckCircle2, Users } from "lucide-react";
 
 export const Route = createFileRoute("/")({
+  validateSearch: (search: Record<string, unknown>): { redirect?: string } => ({
+    redirect: typeof search.redirect === "string" && search.redirect.startsWith("/")
+      ? search.redirect
+      : undefined,
+  }),
   component: LoginPage,
 });
 
@@ -17,14 +22,16 @@ const FEATURES = [
 ];
 
 function LoginPage() {
+  const { redirect: redirectPath } = Route.useSearch();
   const [loading, setLoading] = useState(false);
 
   async function handleGoogleLogin() {
     setLoading(true);
+    const callbackURL = `${import.meta.env.VITE_FRONTEND_URL}${redirectPath ?? "/home"}`;
     try {
       await authClient.signIn.social({
         provider: "google",
-        callbackURL: `${import.meta.env.VITE_FRONTEND_URL}/home`,
+        callbackURL,
       });
     } catch {
       toast.error("Login failed. Please try again.");

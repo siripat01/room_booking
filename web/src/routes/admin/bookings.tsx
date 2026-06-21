@@ -15,8 +15,10 @@ import { CalendarDays, Clock, Users, CheckCircle2, XCircle, Loader2, Search } fr
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/bookings")({
-  loader: ({ context: { queryClient } }) =>
-    queryClient.ensureQueryData(adminBookingsQuery()),
+  loader: ({ context: { queryClient } }) => {
+    if (typeof window === "undefined") return;
+    return queryClient.ensureQueryData(adminBookingsQuery());
+  },
   component: AdminBookingsPage,
 });
 

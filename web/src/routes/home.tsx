@@ -12,17 +12,20 @@ import {
 } from "lucide-react";
 
 export const Route = createFileRoute("/home")({
-  beforeLoad: async ({ context: { queryClient } }) => {
+  beforeLoad: async ({ context: { queryClient }, location }) => {
+    if (typeof window === "undefined") return;
     try {
       const user = await queryClient.ensureQueryData(sessionQuery());
-      if (!user) throw redirect({ to: "/" });
+      if (!user) throw redirect({ to: "/", search: { redirect: location.pathname } });
     } catch (e: any) {
       if (e?.isRedirect) throw e;
-      throw redirect({ to: "/" });
+      throw redirect({ to: "/", search: { redirect: location.pathname } });
     }
   },
-  loader: ({ context: { queryClient } }) =>
-    queryClient.ensureQueryData(roomsQuery()),
+  loader: ({ context: { queryClient } }) => {
+    if (typeof window === "undefined") return;
+    return queryClient.ensureQueryData(roomsQuery());
+  },
   component: HomePage,
 });
 

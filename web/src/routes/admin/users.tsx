@@ -14,8 +14,10 @@ import { Users, Search, Loader2, ShieldAlert, CalendarDays } from "lucide-react"
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/users")({
-  loader: ({ context: { queryClient } }) =>
-    queryClient.ensureQueryData(adminUsersQuery()),
+  loader: ({ context: { queryClient } }) => {
+    if (typeof window === "undefined") return;
+    return queryClient.ensureQueryData(adminUsersQuery());
+  },
   component: AdminUsersPage,
 });
 

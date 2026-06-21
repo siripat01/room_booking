@@ -16,8 +16,10 @@ import { Building2, Pencil, Trash2, Plus, Users, Loader2, Wifi, Monitor, Wind, P
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/rooms")({
-  loader: ({ context: { queryClient } }) =>
-    queryClient.ensureQueryData(roomsQuery()),
+  loader: ({ context: { queryClient } }) => {
+    if (typeof window === "undefined") return;
+    return queryClient.ensureQueryData(roomsQuery());
+  },
   component: AdminRoomsPage,
 });
 

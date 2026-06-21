@@ -22,14 +22,16 @@ import {
 } from "recharts";
 
 export const Route = createFileRoute("/admin/")({
-  loader: ({ context: { queryClient } }) =>
-    Promise.all([
+  loader: ({ context: { queryClient } }) => {
+    if (typeof window === "undefined") return;
+    return Promise.all([
       queryClient.ensureQueryData(adminStatsQuery()),
       queryClient.ensureQueryData(adminBookingsQuery({ status: "PENDING" })),
       queryClient.ensureQueryData(reportsOverviewQuery()),
       queryClient.ensureQueryData(reportsBookingsSummaryQuery()),
       queryClient.ensureQueryData(reportsPeakHoursQuery()),
-    ]),
+    ]);
+  },
   component: AdminDashboard,
 });
 

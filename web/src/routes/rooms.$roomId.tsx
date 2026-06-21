@@ -19,17 +19,20 @@ import {
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/rooms/$roomId")({
-  beforeLoad: async ({ context: { queryClient } }) => {
+  beforeLoad: async ({ context: { queryClient }, location }) => {
+    if (typeof window === "undefined") return;
     try {
       const user = await queryClient.ensureQueryData(sessionQuery());
-      if (!user) throw redirect({ to: "/" });
+      if (!user) throw redirect({ to: "/", search: { redirect: location.pathname } });
     } catch (e: any) {
       if (e?.isRedirect) throw e;
-      throw redirect({ to: "/" });
+      throw redirect({ to: "/", search: { redirect: location.pathname } });
     }
   },
-  loader: ({ context: { queryClient }, params: { roomId } }) =>
-    queryClient.ensureQueryData(roomQuery(roomId)),
+  loader: ({ context: { queryClient }, params: { roomId } }) => {
+    if (typeof window === "undefined") return;
+    return queryClient.ensureQueryData(roomQuery(roomId));
+  },
   component: RoomDetailPage,
 });
 
