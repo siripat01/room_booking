@@ -89,4 +89,44 @@ export class RoomService {
             throw new Error("Failed to get room schedule");
         }
     }
+
+    async getRoomAvailability(id: string, date: string) {
+        const room = await this.prisma.room.findUnique({
+            where: { id },
+            include: { timeSlots: true },
+        });
+        if (!room) throw new Error("Room not found");
+
+        const dayOfWeek = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"][
+            new Date(date).getDay()
+        ] as "SUNDAY" | "MONDAY" | "TUESDAY" | "WEDNESDAY" | "THURSDAY" | "FRIDAY" | "SATURDAY";
+
+        const timeSlot = room.timeSlots.find((s) => s.dayOfWeek === dayOfWeek && s.isActive);
+
+        const dayStart = new Date(`${date}T00:00:00.000Z`);
+        const dayEnd = new Date(`${date}T23:59:59.999Z`);
+
+        const bookings = await this.prisma.booking.findMany({
+            where: {
+                roomId: id,
+                status: { in: ["PENDING", "CONFIRMED", "CHECKED_IN"] },
+                startTime: { lt: dayEnd },
+                endTime: { gt: dayStart },
+            },
+            select: { startTime: true, endTime: true, status: true },
+            orderBy: { startTime: "asc" },
+        });
+
+        return {
+            room: { id: room.id, name: room.name, capacity: room.capacity, floor: room.floor },
+            date,
+            openTime: timeSlot?.openTime ?? null,
+            closeTime: timeSlot?.closeTime ?? null,
+            bookings: bookings.map((b) => ({
+                startTime: b.startTime,
+                endTime: b.endTime,
+                status: b.status,
+            })),
+        };
+    }
 }

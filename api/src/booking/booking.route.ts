@@ -70,6 +70,31 @@ const bookingRoutes = new Elysia({ prefix: "/bookings" })
             body: t.Optional(t.Object({ cancelReason: t.Optional(t.String()) })),
         },
     )
+    .get(
+        "/:id/qr",
+        async ({ user, params: { id } }) => {
+            return bookingService.generateQr(id, user.id, user.role ?? "userRole");
+        },
+        { auth: true },
+    )
+    .post(
+        "/:id/checkin",
+        async ({ params: { id }, body }) => {
+            return bookingService.checkIn(id, body.qrToken);
+        },
+        {
+            auth: true,
+            body: t.Object({ qrToken: t.String() }),
+        },
+    )
+    .post(
+        "/:id/checkout",
+        async ({ user, params: { id }, status }) => {
+            if (!["adminRole", "teacherRole"].includes(user.role ?? "")) return status(403);
+            return bookingService.checkOut(id);
+        },
+        { auth: true },
+    )
     .patch(
         "/:id/approve",
         async ({ user, params: { id }, status }) => {
