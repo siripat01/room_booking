@@ -29,12 +29,14 @@ export const Route = createRootRouteWithContext<RouterContext>()({
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   return (
-    <QueryClientProvider client={queryClient}>
-      <RootDocument>
+    // RootDocument (html/body) must be the outermost element
+    <RootDocument>
+      {/* Providers go INSIDE body, wrapping only the route content */}
+      <QueryClientProvider client={queryClient}>
         <Outlet />
         <Toaster richColors position="top-right" />
-      </RootDocument>
-    </QueryClientProvider>
+      </QueryClientProvider>
+    </RootDocument>
   );
 }
 
@@ -50,4 +52,4 @@ function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
       </body>
     </html>
   );
-}
+}   
