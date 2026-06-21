@@ -10,6 +10,10 @@ on:
       - main
       - development
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend-ci:
     name: Backend CI (API)
@@ -22,17 +26,24 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: "1.2.x"
+
+      - name: Cache Bun Dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ hashFiles('api/bun.lockb') }}
+          restore-keys: bun-
 
       - name: Install Dependencies
         working-directory: api
-        run: bun install
+        run: bun install --frozen-lockfile
 
       - name: Generate Prisma Client
         working-directory: api
         run: bun --bun run prisma generate
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy"
 
       - name: Type Check Backend
         working-directory: api
@@ -56,9 +67,20 @@ jobs:
         with:
           version: 11
 
+      - name: Cache PNPM Dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-${{ hashFiles('web/pnpm-lock.yaml') }}
+          restore-keys: pnpm-
+
       - name: Install Dependencies
         working-directory: web
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
+
+      - name: Type Check Frontend
+        working-directory: web
+        run: pnpm exec tsc --noEmit
 
       - name: Build Frontend
         working-directory: web
