@@ -1,6 +1,8 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCurrentUser } from "../lib/useCurrentUser";
+import { bookingsQuery, sessionQuery, type BookingStatus, type Booking } from "../lib/queries";
 import { app } from "../lib/api";
 import { Navbar } from "../components/Navbar";
 import { Badge } from "../components/ui/badge";
@@ -20,31 +22,15 @@ import {
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/bookings")({
+  beforeLoad: async ({ context: { queryClient } }) => {
+    const user = await queryClient.ensureQueryData(sessionQuery());
+    if (!user) throw redirect({ to: "/" });
+  },
+  loader: ({ context: { queryClient } }) =>
+    queryClient.ensureQueryData(bookingsQuery()),
   component: BookingsPage,
 });
 
-type BookingStatus =
-  | "PENDING"
-  | "CONFIRMED"
-  | "CHECKED_IN"
-  | "COMPLETED"
-  | "CANCELLED"
-  | "REJECTED"
-  | "EXPIRED";
-
-type Booking = {
-  id: string;
-  roomId: string;
-  room?: { name: string; floor: string };
-  startTime: string;
-  endTime: string;
-  attendees: number;
-  purpose?: string | null;
-  status: BookingStatus;
-  cancelReason?: string | null;
-  rejectedReason?: string | null;
-  createdAt: string;
-};
 
 const STATUS_CONFIG: Record<
   BookingStatus,
@@ -67,51 +53,29 @@ const TAB_FILTERS: { label: string; statuses: BookingStatus[] | null }[] = [
 ];
 
 function BookingsPage() {
-  const { user, loading: userLoading } = useCurrentUser();
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { user } = useCurrentUser();
+  const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState(0);
-  const [cancelling, setCancelling] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!userLoading && !user) window.location.href = "/";
-  }, [user, userLoading]);
+  const { data, isLoading: loading } = useQuery(bookingsQuery());
+  const bookings: Booking[] = (data as any)?.bookings ?? [];
 
-  useEffect(() => {
-    async function fetchBookings() {
-      try {
-        const { data } = await (app.api.bookings as any).get();
-        if (data) setBookings(data as Booking[]);
-      } catch {
-        setBookings(DEMO_BOOKINGS);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchBookings();
-  }, []);
+  const cancelMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await (app.api.bookings as any)[id].cancel.patch();
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["bookings"] });
+      toast.success("Booking cancelled.");
+    },
+    onError: () => toast.error("Could not cancel booking."),
+  });
 
   const activeStatuses = TAB_FILTERS[activeTab].statuses;
   const displayed = activeStatuses
     ? bookings.filter((b) => (activeStatuses as string[]).includes(b.status))
     : bookings;
-
-  async function cancelBooking(id: string) {
-    setCancelling(id);
-    try {
-      await (app.api.bookings as any)[id].delete();
-      setBookings((prev) =>
-        prev.map((b) => (b.id === id ? { ...b, status: "CANCELLED" as BookingStatus } : b))
-      );
-      toast.success("Booking cancelled.");
-    } catch {
-      toast.error("Could not cancel booking.");
-    } finally {
-      setCancelling(null);
-    }
-  }
-
-  const isDemo = loading === false && bookings === DEMO_BOOKINGS;
 
   return (
     <div className="min-h-screen bg-background">
@@ -122,12 +86,6 @@ function BookingsPage() {
           <h1 className="text-2xl font-bold mb-1">My Bookings</h1>
           <p className="text-muted-foreground">Track and manage your room reservations</p>
         </div>
-
-        {isDemo && (
-          <div className="mb-6 rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-3 text-sm text-yellow-800">
-            Showing demo data — connect your backend to see your bookings.
-          </div>
-        )}
 
         {/* Tabs */}
         <div className="flex gap-1 mb-6 border-b">
@@ -170,8 +128,8 @@ function BookingsPage() {
               <BookingCard
                 key={booking.id}
                 booking={booking}
-                onCancel={cancelBooking}
-                cancelling={cancelling === booking.id}
+                onCancel={(id) => cancelMutation.mutate(id)}
+                cancelling={cancelMutation.isPending && cancelMutation.variables === booking.id}
               />
             ))}
           </div>
@@ -275,53 +233,3 @@ function BookingCard({
   );
 }
 
-const now = new Date();
-const addHours = (h: number) => new Date(now.getTime() + h * 3600000).toISOString();
-const subHours = (h: number) => new Date(now.getTime() - h * 3600000).toISOString();
-
-const DEMO_BOOKINGS: Booking[] = [
-  {
-    id: "b1",
-    roomId: "demo-1",
-    room: { name: "Conference Room A", floor: "3" },
-    startTime: addHours(2),
-    endTime: addHours(3),
-    attendees: 8,
-    purpose: "Weekly team standup",
-    status: "CONFIRMED",
-    createdAt: subHours(24),
-  },
-  {
-    id: "b2",
-    roomId: "demo-3",
-    room: { name: "Board Room", floor: "5" },
-    startTime: addHours(26),
-    endTime: addHours(28),
-    attendees: 10,
-    purpose: "Q3 strategy review with stakeholders",
-    status: "PENDING",
-    createdAt: subHours(2),
-  },
-  {
-    id: "b3",
-    roomId: "demo-2",
-    room: { name: "Meeting Room B", floor: "2" },
-    startTime: subHours(5),
-    endTime: subHours(4),
-    attendees: 4,
-    purpose: "Product demo",
-    status: "COMPLETED",
-    createdAt: subHours(48),
-  },
-  {
-    id: "b4",
-    roomId: "demo-4",
-    room: { name: "Collaboration Hub", floor: "1" },
-    startTime: subHours(72),
-    endTime: subHours(71),
-    attendees: 3,
-    purpose: "Design brainstorm",
-    status: "CANCELLED",
-    createdAt: subHours(100),
-  },
-];

@@ -1,6 +1,8 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCurrentUser } from "../lib/useCurrentUser";
+import { roomQuery, sessionQuery } from "../lib/queries";
 import { app } from "../lib/api";
 import { Navbar } from "../components/Navbar";
 import { Button } from "../components/ui/button";
@@ -28,6 +30,12 @@ import {
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/rooms/$roomId")({
+  beforeLoad: async ({ context: { queryClient } }) => {
+    const user = await queryClient.ensureQueryData(sessionQuery());
+    if (!user) throw redirect({ to: "/" });
+  },
+  loader: ({ context: { queryClient }, params: { roomId } }) =>
+    queryClient.ensureQueryData(roomQuery(roomId)),
   component: RoomDetailPage,
 });
 
@@ -47,24 +55,13 @@ const AMENITY_LABELS: Record<string, string> = {
   wifi: "Wi-Fi",
 };
 
-type Room = {
-  id: string;
-  name: string;
-  description?: string | null;
-  capacity: number;
-  floor: string;
-  amenities: string[];
-  isActive: boolean;
-};
-
 type BookingResult = { status: string };
 
 function RoomDetailPage() {
   const { roomId } = Route.useParams();
-  const { user, loading: userLoading } = useCurrentUser();
-  const [room, setRoom] = useState<Room | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+  const { user } = useCurrentUser();
+  const qc = useQueryClient();
+  const { data: room, isLoading: roomLoading } = useQuery(roomQuery(roomId));
   const [booking, setBooking] = useState<BookingResult | null>(null);
 
   const today = new Date().toISOString().split("T")[0];
@@ -76,32 +73,8 @@ function RoomDetailPage() {
     purpose: "",
   });
 
-  useEffect(() => {
-    if (!userLoading && !user) window.location.href = "/";
-  }, [user, userLoading]);
-
-  useEffect(() => {
-    async function fetchRoom() {
-      try {
-        const { data } = await (app.api.rooms as any)[roomId].get();
-        if (data) setRoom(data as Room);
-      } catch {
-        const demo = DEMO_ROOMS.find((r) => r.id === roomId);
-        if (demo) setRoom(demo);
-      } finally {
-        setLoading(false);
-      }
-    }
-    if (roomId) fetchRoom();
-  }, [roomId]);
-
-  async function handleBooking(e: React.FormEvent) {
-    e.preventDefault();
-    if (!form.purpose.trim()) { toast.error("Please enter a purpose."); return; }
-    if (form.startTime >= form.endTime) { toast.error("End time must be after start time."); return; }
-
-    setSubmitting(true);
-    try {
+  const bookMutation = useMutation({
+    mutationFn: async () => {
       const startTime = new Date(`${form.date}T${form.startTime}:00`).toISOString();
       const endTime = new Date(`${form.date}T${form.endTime}:00`).toISOString();
       const { data, error } = await (app.api.bookings as any).post({
@@ -112,21 +85,29 @@ function RoomDetailPage() {
         purpose: form.purpose,
       });
       if (error) throw new Error((error as any)?.message ?? "Booking failed");
-      setBooking(data as BookingResult);
+      return data as BookingResult;
+    },
+    onSuccess: (data) => {
+      setBooking(data);
+      qc.invalidateQueries({ queryKey: ["bookings"] });
       const msg = (data as any)?.status === "CONFIRMED"
         ? "Booking confirmed!"
         : "Booking submitted — awaiting admin approval.";
       toast.success(msg);
-    } catch (err: any) {
-      toast.error(err?.message ?? "Booking failed. Please try again.");
-    } finally {
-      setSubmitting(false);
-    }
+    },
+    onError: (err: any) => toast.error(err?.message ?? "Booking failed. Please try again."),
+  });
+
+  function handleBooking(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.purpose.trim()) { toast.error("Please enter a purpose."); return; }
+    if (form.startTime >= form.endTime) { toast.error("End time must be after start time."); return; }
+    bookMutation.mutate();
   }
 
   const autoConfirm = user?.isTeacher || user?.isAdmin;
 
-  if (loading || userLoading) {
+  if (roomLoading) {
     return (
       <div className="min-h-screen bg-background">
         <Navbar user={user} />
@@ -294,9 +275,9 @@ function RoomDetailPage() {
                         rows={3} required />
                     </div>
 
-                    <Button type="submit" className="w-full" disabled={submitting}>
-                      {submitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                      {submitting ? "Submitting…" : autoConfirm ? "Book Now" : "Request Booking"}
+                    <Button type="submit" className="w-full" disabled={bookMutation.isPending}>
+                      {bookMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                      {bookMutation.isPending ? "Submitting…" : autoConfirm ? "Book Now" : "Request Booking"}
                     </Button>
                   </form>
                 )}
@@ -309,11 +290,3 @@ function RoomDetailPage() {
   );
 }
 
-const DEMO_ROOMS: Room[] = [
-  { id: "demo-1", name: "Conference Room A", description: "Spacious main conference room.", capacity: 20, floor: "3", amenities: ["projector", "whiteboard", "ac", "wifi"], isActive: true },
-  { id: "demo-2", name: "Meeting Room B", description: "Cozy room for small teams.", capacity: 8, floor: "2", amenities: ["tv", "whiteboard", "ac"], isActive: true },
-  { id: "demo-3", name: "Board Room", description: "Executive board room.", capacity: 12, floor: "5", amenities: ["projector", "tv", "ac", "wifi"], isActive: true },
-  { id: "demo-4", name: "Collaboration Hub", description: "Open creative space.", capacity: 6, floor: "1", amenities: ["whiteboard", "wifi"], isActive: true },
-  { id: "demo-5", name: "Training Room", description: "Large training and workshop room.", capacity: 30, floor: "4", amenities: ["projector", "whiteboard", "ac", "wifi"], isActive: true },
-  { id: "demo-6", name: "Focus Room", description: "Quiet private space.", capacity: 4, floor: "2", amenities: ["ac", "wifi"], isActive: true },
-];

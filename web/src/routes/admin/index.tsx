@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { adminStatsQuery, adminBookingsQuery } from "../../lib/queries";
 import { app } from "../../lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
@@ -16,6 +17,11 @@ import {
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/")({
+  loader: ({ context: { queryClient } }) =>
+    Promise.all([
+      queryClient.ensureQueryData(adminStatsQuery()),
+      queryClient.ensureQueryData(adminBookingsQuery({ status: "PENDING" })),
+    ]),
   component: AdminDashboard,
 });
 
@@ -47,54 +53,34 @@ const STAT_CARDS = [
 const DEMO_STATS: Stats = { totalRooms: 6, pendingBookings: 3, totalUsers: 42, confirmedToday: 5 };
 
 function AdminDashboard() {
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [recentBookings, setRecentBookings] = useState<Booking[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [acting, setActing] = useState<string | null>(null);
+  const qc = useQueryClient();
+  const { data: stats } = useQuery(adminStatsQuery());
+  const { data: bookingsData } = useQuery(adminBookingsQuery({ status: "PENDING" }));
+  const pendingBookings: Booking[] = ((bookingsData as any)?.bookings ?? []).slice(0, 5);
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const [statsRes, bookingsRes] = await Promise.all([
-          (app.api.bookings as any).stats.get(),
-          (app.api.bookings as any).get(),
-        ]);
-        if (statsRes.data) setStats(statsRes.data as Stats);
-        if (bookingsRes.data) {
-          const pending = (bookingsRes.data as Booking[]).filter((b) => b.status === "PENDING").slice(0, 5);
-          setRecentBookings(pending);
-        }
-      } catch {
-        setStats(DEMO_STATS);
-        setRecentBookings(DEMO_BOOKINGS);
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
-  }, []);
-
-  async function approve(id: string) {
-    setActing(id);
-    try {
-      await (app.api.bookings as any)[id].approve.patch();
-      setRecentBookings((prev) => prev.filter((b) => b.id !== id));
-      if (stats) setStats({ ...stats, pendingBookings: stats.pendingBookings - 1, confirmedToday: stats.confirmedToday + 1 });
+  const approveMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await (app.api.bookings as any)[id].approve.patch();
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin"] });
       toast.success("Booking approved");
-    } catch { toast.error("Failed to approve"); }
-    finally { setActing(null); }
-  }
+    },
+    onError: () => toast.error("Failed to approve"),
+  });
 
-  async function reject(id: string) {
-    setActing(id);
-    try {
-      await (app.api.bookings as any)[id].reject.patch({ reason: "Rejected by admin" });
-      setRecentBookings((prev) => prev.filter((b) => b.id !== id));
-      if (stats) setStats({ ...stats, pendingBookings: stats.pendingBookings - 1 });
+  const rejectMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await (app.api.bookings as any)[id].reject.patch({ reason: "Rejected by admin" });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin"] });
       toast.success("Booking rejected");
-    } catch { toast.error("Failed to reject"); }
-    finally { setActing(null); }
-  }
+    },
+    onError: () => toast.error("Failed to reject"),
+  });
 
   const displayStats = stats ?? DEMO_STATS;
 
@@ -114,11 +100,7 @@ function AdminDashboard() {
                 <p className="text-sm text-muted-foreground">{label}</p>
                 <Icon className={`w-5 h-5 ${color}`} />
               </div>
-              {loading ? (
-                <div className="h-8 w-12 bg-muted rounded animate-pulse" />
-              ) : (
-                <p className="text-3xl font-bold">{displayStats[key]}</p>
-              )}
+              <p className="text-3xl font-bold">{displayStats[key]}</p>
             </CardContent>
           </Card>
         ))}
@@ -135,19 +117,22 @@ function AdminDashboard() {
           </Button>
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map((i) => <div key={i} className="h-16 bg-muted rounded animate-pulse" />)}
-            </div>
-          ) : recentBookings.length === 0 ? (
+          {pendingBookings.length === 0 ? (
             <div className="text-center py-10 text-muted-foreground">
               <CheckCircle2 className="w-8 h-8 mx-auto mb-2 opacity-30" />
               <p className="text-sm">No pending bookings</p>
             </div>
           ) : (
             <div className="space-y-3">
-              {recentBookings.map((b) => (
-                <PendingRow key={b.id} booking={b} onApprove={approve} onReject={reject} acting={acting === b.id} />
+              {pendingBookings.map((b) => (
+                <PendingRow
+                  key={b.id}
+                  booking={b}
+                  onApprove={(id) => approveMutation.mutate(id)}
+                  onReject={(id) => rejectMutation.mutate(id)}
+                  acting={(approveMutation.isPending || rejectMutation.isPending) &&
+                    (approveMutation.variables === b.id || rejectMutation.variables === b.id)}
+                />
               ))}
             </div>
           )}
