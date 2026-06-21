@@ -198,9 +198,9 @@ model Booking {
 model Device {
   id String @id @default(uuid())
 
-  // ผูกกับห้องแบบ 1-to-1
-  roomId String @unique @map("room_id")
-  room   Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  // ผูกกับห้องแบบ 1-to-1 (nullable — device ไม่มีห้องได้)
+  roomId String? @unique @map("room_id")
+  room   Room?   @relation(fields: [roomId], references: [id], onDelete: SetNull)
 
   name      String // เช่น "Kiosk Room A101"
   // Key สำหรับ authenticate device (ไม่ใช้ JWT ของ user)

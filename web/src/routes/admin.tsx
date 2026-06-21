@@ -7,6 +7,7 @@ import {
   CalendarDays,
   Building2,
   Users,
+  Cpu,
   ArrowLeft,
   LogOut,
 } from "lucide-react";
@@ -25,6 +26,7 @@ const NAV_ITEMS = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { to: "/admin/bookings", label: "Bookings", icon: CalendarDays, exact: false },
   { to: "/admin/rooms", label: "Rooms", icon: Building2, exact: false },
+  { to: "/admin/devices", label: "Devices", icon: Cpu, exact: false },
   { to: "/admin/users", label: "Users", icon: Users, exact: false },
 ];
 
