@@ -8,32 +8,24 @@ import { Input } from "../components/ui/input";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "../components/ui/card";
-import {
-  Search,
-  Users,
-  Building2,
-  Wifi,
-  Monitor,
-  Wind,
-  PenSquare,
-  Tv,
-  Filter,
+  Search, Users, Building2, Wifi, Monitor, Wind, PenSquare, Tv, SlidersHorizontal,
 } from "lucide-react";
 
 export const Route = createFileRoute("/home")({
-  beforeLoad: async ({ context: { queryClient } }) => {
-    const user = await queryClient.ensureQueryData(sessionQuery());
-    if (!user) throw redirect({ to: "/" });
+  beforeLoad: async ({ context: { queryClient }, location }) => {
+    if (typeof window === "undefined") return;
+    try {
+      const user = await queryClient.ensureQueryData(sessionQuery());
+      if (!user) throw redirect({ to: "/", search: { redirect: location.pathname } });
+    } catch (e: any) {
+      if (e?.isRedirect) throw e;
+      throw redirect({ to: "/", search: { redirect: location.pathname } });
+    }
   },
-  loader: ({ context: { queryClient } }) =>
-    queryClient.ensureQueryData(roomsQuery()),
+  loader: ({ context: { queryClient } }) => {
+    if (typeof window === "undefined") return;
+    return queryClient.ensureQueryData(roomsQuery());
+  },
   component: HomePage,
 });
 
@@ -54,11 +46,21 @@ const AMENITY_LABELS: Record<string, string> = {
 };
 
 const CAPACITY_FILTERS = [
-  { label: "Any", value: 0 },
+  { label: "Any size", value: 0 },
   { label: "1–5", value: 5 },
   { label: "6–10", value: 10 },
   { label: "11–20", value: 20 },
   { label: "20+", value: 999 },
+];
+
+// Gradient palettes for room cards
+const CARD_GRADIENTS = [
+  "from-blue-500 to-blue-700",
+  "from-violet-500 to-violet-700",
+  "from-emerald-500 to-emerald-700",
+  "from-sky-500 to-sky-700",
+  "from-indigo-500 to-indigo-700",
+  "from-teal-500 to-teal-700",
 ];
 
 function HomePage() {
@@ -88,36 +90,38 @@ function HomePage() {
     );
   }
 
-  const displayRooms = filtered;
+  const activeFiltersCount = (capacityFilter > 0 ? 1 : 0) + amenityFilter.length + (floorFilter ? 1 : 0);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-slate-50">
       <Navbar user={user} />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
         {/* Page heading */}
         <div className="mb-8">
-          <h1 className="text-2xl font-bold mb-1">Find a Room</h1>
-          <p className="text-muted-foreground">Browse and book available meeting rooms</p>
+          <h1 className="text-2xl font-bold text-slate-900">Find a Room</h1>
+          <p className="text-muted-foreground text-sm mt-1">
+            {loading ? "Loading rooms…" : `${rooms.filter(r => r.isActive).length} rooms available`}
+          </p>
         </div>
 
         {/* Search + filters */}
-        <div className="flex flex-col gap-4 mb-8">
+        <div className="bg-white rounded-xl border p-4 mb-8 space-y-3">
           <div className="flex gap-3">
-            <div className="relative flex-1 max-w-md">
+            <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
-                placeholder="Search rooms or floors…"
+                placeholder="Search rooms…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
+                className="pl-9 bg-slate-50 border-slate-200"
               />
             </div>
             {floors.length > 0 && (
               <select
                 value={floorFilter}
                 onChange={(e) => setFloorFilter(e.target.value)}
-                className="h-10 rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="h-10 rounded-md border border-slate-200 bg-slate-50 px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 text-slate-700"
               >
                 <option value="">All Floors</option>
                 {floors.map((f) => (
@@ -127,19 +131,18 @@ function HomePage() {
             )}
           </div>
 
-          {/* Capacity filter pills */}
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm text-muted-foreground flex items-center gap-1.5">
-              <Filter className="w-3.5 h-3.5" /> Capacity:
+            <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
+              <SlidersHorizontal className="w-3.5 h-3.5" /> Capacity
             </span>
             {CAPACITY_FILTERS.map((f) => (
               <button
                 key={f.value}
                 onClick={() => setCapacityFilter(capacityFilter === f.value ? 0 : f.value)}
-                className={`px-3 py-1 rounded-full text-sm border transition-colors ${
+                className={`px-3 py-1 rounded-full text-xs border transition-colors font-medium ${
                   capacityFilter === f.value
-                    ? "bg-foreground text-background border-foreground"
-                    : "border-border hover:border-foreground/40"
+                    ? "bg-blue-600 text-white border-blue-600"
+                    : "border-slate-200 text-slate-600 hover:border-blue-300 hover:text-blue-600 bg-white"
                 }`}
               >
                 {f.label}
@@ -147,15 +150,15 @@ function HomePage() {
             ))}
             {allAmenities.length > 0 && (
               <>
-                <span className="text-muted-foreground mx-1">|</span>
+                <span className="text-slate-300 select-none">|</span>
                 {allAmenities.map((a) => (
                   <button
                     key={a}
                     onClick={() => toggleAmenity(a)}
-                    className={`flex items-center gap-1 px-3 py-1 rounded-full text-sm border transition-colors ${
+                    className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs border transition-colors font-medium ${
                       amenityFilter.includes(a)
-                        ? "bg-foreground text-background border-foreground"
-                        : "border-border hover:border-foreground/40"
+                        ? "bg-blue-600 text-white border-blue-600"
+                        : "border-slate-200 text-slate-600 hover:border-blue-300 hover:text-blue-600 bg-white"
                     }`}
                   >
                     {AMENITY_ICONS[a]}
@@ -164,26 +167,41 @@ function HomePage() {
                 ))}
               </>
             )}
+            {activeFiltersCount > 0 && (
+              <button
+                onClick={() => { setCapacityFilter(0); setAmenityFilter([]); setFloorFilter(""); }}
+                className="text-xs text-blue-600 hover:text-blue-800 underline ml-1"
+              >
+                Clear filters
+              </button>
+            )}
           </div>
         </div>
 
         {/* Room grid */}
         {loading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="rounded-lg border bg-card h-56 animate-pulse" />
+              <div key={i} className="rounded-xl border bg-white h-64 animate-pulse" />
             ))}
           </div>
-        ) : displayRooms.length === 0 ? (
-          <div className="text-center py-20 text-muted-foreground">
-            <Building2 className="w-12 h-12 mx-auto mb-3 opacity-30" />
-            <p className="font-medium">No rooms found</p>
-            <p className="text-sm mt-1">Try adjusting your search or filters</p>
+        ) : filtered.length === 0 ? (
+          <div className="text-center py-24 text-muted-foreground">
+            <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
+              <Building2 className="w-8 h-8 opacity-40" />
+            </div>
+            <p className="font-semibold text-slate-700">No rooms found</p>
+            <p className="text-sm mt-1">Try adjusting your filters</p>
+            {activeFiltersCount > 0 && (
+              <Button variant="link" onClick={() => { setCapacityFilter(0); setAmenityFilter([]); setFloorFilter(""); setSearch(""); }} className="mt-2 text-blue-600">
+                Clear all filters
+              </Button>
+            )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {displayRooms.map((room) => (
-              <RoomCard key={room.id} room={room} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {filtered.map((room, i) => (
+              <RoomCard key={room.id} room={room} gradient={CARD_GRADIENTS[i % CARD_GRADIENTS.length]} />
             ))}
           </div>
         )}
@@ -192,35 +210,40 @@ function HomePage() {
   );
 }
 
-function RoomCard({ room }: { room: Room }) {
+function RoomCard({ room, gradient }: { room: Room; gradient: string }) {
   return (
-    <Card className="flex flex-col hover:shadow-md transition-shadow group">
-      {/* Placeholder image area */}
-      <div className="h-40 bg-gradient-to-br from-secondary to-muted rounded-t-lg flex items-center justify-center text-muted-foreground/30 overflow-hidden">
-        <Building2 className="w-16 h-16" />
-      </div>
-      <CardHeader className="pb-2">
-        <div className="flex items-start justify-between gap-2">
-          <CardTitle className="text-base">{room.name}</CardTitle>
-          <Badge variant="secondary" className="shrink-0 text-xs">
+    <div className="bg-white rounded-xl border overflow-hidden hover:shadow-md transition-shadow group flex flex-col">
+      {/* Gradient header */}
+      <div className={`h-36 bg-gradient-to-br ${gradient} flex items-end p-4 relative`}>
+        <div className="absolute inset-0 opacity-10">
+          <Building2 className="w-32 h-32 absolute -right-4 -top-4 text-white" />
+        </div>
+        <div className="relative">
+          <Badge className="bg-white/20 text-white border-white/30 text-xs backdrop-blur-sm">
             Floor {room.floor}
           </Badge>
         </div>
+      </div>
+
+      <div className="p-4 flex flex-col flex-1">
+        <h3 className="font-semibold text-slate-900 mb-1 group-hover:text-blue-700 transition-colors">
+          {room.name}
+        </h3>
         {room.description && (
-          <CardDescription className="line-clamp-2 text-xs">{room.description}</CardDescription>
+          <p className="text-xs text-muted-foreground line-clamp-2 mb-3">{room.description}</p>
         )}
-      </CardHeader>
-      <CardContent className="pb-3 flex-1">
-        <div className="flex items-center gap-1.5 text-sm text-muted-foreground mb-3">
+
+        <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-3">
           <Users className="w-3.5 h-3.5" />
-          <span>Up to {room.capacity} people</span>
+          <span>Up to <span className="font-medium text-slate-700">{room.capacity}</span> people</span>
         </div>
+
         {room.amenities.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-1.5 mb-4">
             {room.amenities.map((a) => (
               <span
                 key={a}
-                className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-xs text-secondary-foreground"
+                className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600"
               >
                 {AMENITY_ICONS[a]}
                 {AMENITY_LABELS[a] ?? a}
@@ -228,71 +251,15 @@ function RoomCard({ room }: { room: Room }) {
             ))}
           </div>
         )}
-      </CardContent>
-      <CardFooter className="pt-0">
-        <Button asChild className="w-full" size="sm">
-          <Link to="/rooms/$roomId" params={{ roomId: room.id }}>
-            View & Book
-          </Link>
-        </Button>
-      </CardFooter>
-    </Card>
+
+        <div className="mt-auto">
+          <Button asChild className="w-full bg-blue-600 hover:bg-blue-700 text-white" size="sm">
+            <Link to="/rooms/$roomId" params={{ roomId: room.id }}>
+              View & Book
+            </Link>
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
-
-const DEMO_ROOMS: Room[] = [
-  {
-    id: "demo-1",
-    name: "Conference Room A",
-    description: "Spacious main conference room with full AV setup.",
-    capacity: 20,
-    floor: "3",
-    amenities: ["projector", "whiteboard", "ac", "wifi"],
-    isActive: true,
-  },
-  {
-    id: "demo-2",
-    name: "Meeting Room B",
-    description: "Cozy room ideal for small team discussions.",
-    capacity: 8,
-    floor: "2",
-    amenities: ["tv", "whiteboard", "ac"],
-    isActive: true,
-  },
-  {
-    id: "demo-3",
-    name: "Board Room",
-    description: "Executive board room with premium furniture.",
-    capacity: 12,
-    floor: "5",
-    amenities: ["projector", "tv", "ac", "wifi"],
-    isActive: true,
-  },
-  {
-    id: "demo-4",
-    name: "Collaboration Hub",
-    description: "Open collaboration space for creative sessions.",
-    capacity: 6,
-    floor: "1",
-    amenities: ["whiteboard", "wifi"],
-    isActive: true,
-  },
-  {
-    id: "demo-5",
-    name: "Training Room",
-    description: "Large room equipped for training and workshops.",
-    capacity: 30,
-    floor: "4",
-    amenities: ["projector", "whiteboard", "ac", "wifi"],
-    isActive: true,
-  },
-  {
-    id: "demo-6",
-    name: "Focus Room",
-    description: "Quiet private space for focused work or 1-on-1s.",
-    capacity: 4,
-    floor: "2",
-    amenities: ["ac", "wifi"],
-    isActive: true,
-  },
-];

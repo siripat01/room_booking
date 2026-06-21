@@ -17,11 +17,13 @@ import { getDeviceStatus, formatRelativeTime, getStatusBadgeVariant } from "../.
 import type { Device, Room } from "../../types/device";
 
 export const Route = createFileRoute("/admin/devices")({
-  loader: ({ context: { queryClient } }) =>
-    Promise.all([
+  loader: ({ context: { queryClient } }) => {
+    if (typeof window === "undefined") return;
+    return Promise.all([
       queryClient.ensureQueryData(devicesQuery()),
       queryClient.ensureQueryData(roomsQuery()),
-    ]),
+    ]);
+  },
   component: AdminDevicesPage,
 });
 

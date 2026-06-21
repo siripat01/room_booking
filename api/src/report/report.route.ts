@@ -21,7 +21,7 @@ const reportRoutes = new Elysia({ prefix: "/reports" })
         if (user.role !== "adminRole") return status(403);
         return reportService.getRoomUsage(query.from, query.to, query.roomId);
     }, { auth: true, query: QUERY })
-    .get("/bookings/summary", async ({ user, query, status }) => {
+    .get("/bookings-summary", async ({ user, query, status }) => {
         if (user.role !== "adminRole") return status(403);
         return reportService.getBookingsSummary(query.from, query.to, query.roomId);
     }, { auth: true, query: QUERY })

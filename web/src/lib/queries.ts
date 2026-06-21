@@ -7,7 +7,8 @@ import type { UserRole } from "./useCurrentUser";
 export const sessionQuery = () => ({
   queryKey: ["session"],
   queryFn: async () => {
-    const s = await authClient.getSession();
+    let s: Awaited<ReturnType<typeof authClient.getSession>>;
+    try { s = await authClient.getSession(); } catch { return null; }
     if (!s.data?.user) return null;
     const u = s.data.user as any;
     const role: UserRole = u.role ?? "userRole";
@@ -130,7 +131,25 @@ export const reportsOverviewQuery = (from?: string, to?: string) => ({
   queryFn: async () => {
     const { data, error } = await (app.api.reports as any).overview.get({ query: { from, to } });
     if (error) throw error;
-    return data;
+    return data as ReportsOverview;
+  },
+});
+
+export const reportsBookingsSummaryQuery = (from?: string, to?: string) => ({
+  queryKey: ["reports", "bookings-summary", from, to],
+  queryFn: async () => {
+    const { data, error } = await (app.api.reports as any)["bookings-summary"].get({ query: { from, to } });
+    if (error) throw error;
+    return data as { byStatus: { status: string; count: number }[]; daily: { date: string; count: number }[] };
+  },
+});
+
+export const reportsPeakHoursQuery = (from?: string, to?: string) => ({
+  queryKey: ["reports", "peak-hours", from, to],
+  queryFn: async () => {
+    const { data, error } = await (app.api.reports as any)["peak-hours"].get({ query: { from, to } });
+    if (error) throw error;
+    return data as { hour: number; label: string; count: number }[];
   },
 });
 
@@ -209,6 +228,16 @@ export type AdminStats = {
   pendingBookings: number;
   totalUsers: number;
   confirmedToday: number;
+};
+
+export type ReportsOverview = {
+  totalRooms: number;
+  totalBookings: number;
+  pendingBookings: number;
+  confirmedBookings: number;
+  cancelledBookings: number;
+  totalUsers: number;
+  popularRooms: { room: { id: string; name: string; floor: string }; bookingCount: number }[];
 };
 
 export type AdminDevice = {
