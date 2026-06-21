@@ -27,6 +27,11 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -45,7 +50,7 @@ jobs:
 
       - name: Generate Prisma Client
         working-directory: api
-        run: bun --bun run prisma generate
+        run: node node_modules/prisma/build/index.js generate
         env:
           DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy"
 
@@ -79,7 +84,7 @@ jobs:
 
       - name: Generate Prisma Client
         working-directory: api
-        run: bun --bun run prisma generate
+        run: node node_modules/prisma/build/index.js generate
         env:
           DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy"
 
