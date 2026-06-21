@@ -53,7 +53,7 @@ export function RotateKeyConfirmModal({
             <Checkbox
               id="confirm-rotate"
               checked={confirmed}
-              onCheckedChange={setConfirmed}
+              onCheckedChange={(checked) => setConfirmed(checked === true)}
               disabled={isLoading}
             />
             <Label htmlFor="confirm-rotate" className="text-sm text-foreground mt-0.5">
