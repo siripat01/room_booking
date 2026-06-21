@@ -47,7 +47,7 @@ const roomRoutes = new Elysia()
     }, { auth: true })
     .post("/rooms", async ({ user, body, status }) => {
         if (user.role !== "adminRole") return status(403);
-        return await roomService.createRoom(body);
+        return await roomService.createRoom({ ...body, amenities: body.amenities ?? [] });
     }, {
         auth: true,
         body: t.Object({

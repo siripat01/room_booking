@@ -132,7 +132,7 @@ function AdminDevicesPage() {
     createdAt: "",
     updatedAt: "",
     device: (devices as AdminDevice[]).find((d) => d.roomId === r.id)
-      ? { id: "", name: "", roomId: r.id, isActive: true, lastSeenAt: null, createdAt: "", room: null }
+      ? { id: "", name: "", roomId: r.id, isActive: true, lastSeenAt: null, createdAt: "", updatedAt: "", deviceKey: "", room: null }
       : null,
   }));
 
@@ -151,6 +151,8 @@ function AdminDevicesPage() {
     isActive: d.isActive,
     lastSeenAt: d.lastSeenAt ?? null,
     createdAt: d.createdAt,
+    updatedAt: "",
+    deviceKey: "",
     room: d.room ? { ...d.room, description: null, capacity: 0, amenities: [], isActive: true, createdAt: "", updatedAt: "", device: null } : null,
   });
 
