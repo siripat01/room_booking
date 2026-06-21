@@ -11,9 +11,14 @@ import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin")({
   beforeLoad: async () => {
-    const session = await authClient.getSession();
-    if (!session.data?.user) throw redirect({ to: "/" });
-    if ((session.data.user as any).role !== "adminRole") throw redirect({ to: "/home" });
+    try {
+      const session = await authClient.getSession();
+      if (!session.data?.user) throw redirect({ to: "/" });
+      if ((session.data.user as any).role !== "adminRole") throw redirect({ to: "/home" });
+    } catch (e: any) {
+      if (e?.isRedirect) throw e;
+      throw redirect({ to: "/" });
+    }
   },
   component: AdminLayout,
 });

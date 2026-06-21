@@ -13,8 +13,13 @@ import {
 
 export const Route = createFileRoute("/home")({
   beforeLoad: async ({ context: { queryClient } }) => {
-    const user = await queryClient.ensureQueryData(sessionQuery());
-    if (!user) throw redirect({ to: "/" });
+    try {
+      const user = await queryClient.ensureQueryData(sessionQuery());
+      if (!user) throw redirect({ to: "/" });
+    } catch (e: any) {
+      if (e?.isRedirect) throw e;
+      throw redirect({ to: "/" });
+    }
   },
   loader: ({ context: { queryClient } }) =>
     queryClient.ensureQueryData(roomsQuery()),

@@ -7,7 +7,8 @@ import type { UserRole } from "./useCurrentUser";
 export const sessionQuery = () => ({
   queryKey: ["session"],
   queryFn: async () => {
-    const s = await authClient.getSession();
+    let s: Awaited<ReturnType<typeof authClient.getSession>>;
+    try { s = await authClient.getSession(); } catch { return null; }
     if (!s.data?.user) return null;
     const u = s.data.user as any;
     const role: UserRole = u.role ?? "userRole";

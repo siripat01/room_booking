@@ -16,8 +16,13 @@ import { toast } from "sonner";
 
 export const Route = createFileRoute("/profile")({
   beforeLoad: async ({ context: { queryClient } }) => {
-    const user = await queryClient.ensureQueryData(sessionQuery());
-    if (!user) throw redirect({ to: "/" });
+    try {
+      const user = await queryClient.ensureQueryData(sessionQuery());
+      if (!user) throw redirect({ to: "/" });
+    } catch (e: any) {
+      if (e?.isRedirect) throw e;
+      throw redirect({ to: "/" });
+    }
   },
   loader: ({ context: { queryClient } }) =>
     queryClient.ensureQueryData(bookingsQuery()),
