@@ -26,6 +26,10 @@ export const auth = betterAuth({
       : { sameSite: "lax", secure: false },
   },
 
+  account: {
+    skipStateCookieCheck: true,
+  },
+
   basePath: "/api/auth",
   plugins: [
     openAPI(),
