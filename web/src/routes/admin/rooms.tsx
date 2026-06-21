@@ -10,13 +10,9 @@ import { Label } from "../../components/ui/label";
 import { Textarea } from "../../components/ui/textarea";
 import { Checkbox } from "../../components/ui/checkbox";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "../../components/ui/dialog";
-import { Building2, Pencil, Trash2, Plus, Users, Loader2 } from "lucide-react";
+import { Building2, Pencil, Trash2, Plus, Users, Loader2, Wifi, Monitor, Wind, PenSquare, Tv } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/rooms")({
@@ -26,11 +22,11 @@ export const Route = createFileRoute("/admin/rooms")({
 });
 
 const AMENITY_OPTIONS = [
-  { value: "projector", label: "Projector" },
-  { value: "whiteboard", label: "Whiteboard" },
-  { value: "tv", label: "TV" },
-  { value: "ac", label: "Air Conditioning" },
-  { value: "wifi", label: "Wi-Fi" },
+  { value: "projector", label: "Projector", icon: Monitor },
+  { value: "whiteboard", label: "Whiteboard", icon: PenSquare },
+  { value: "tv", label: "TV", icon: Tv },
+  { value: "ac", label: "Air Conditioning", icon: Wind },
+  { value: "wifi", label: "Wi-Fi", icon: Wifi },
 ];
 
 const EMPTY_FORM = { name: "", description: "", capacity: "10", floor: "", amenities: [] as string[] };
@@ -75,52 +71,31 @@ function AdminRoomsPage() {
     onError: () => toast.error("Failed to delete room"),
   });
 
-  function openCreate() {
-    setEditTarget(null);
-    setForm(EMPTY_FORM);
-    setModalOpen(true);
-  }
+  function openCreate() { setEditTarget(null); setForm(EMPTY_FORM); setModalOpen(true); }
 
   function openEdit(room: Room) {
     setEditTarget(room);
-    setForm({
-      name: room.name,
-      description: room.description ?? "",
-      capacity: String(room.capacity),
-      floor: room.floor,
-      amenities: [...room.amenities],
-    });
+    setForm({ name: room.name, description: room.description ?? "", capacity: String(room.capacity), floor: room.floor, amenities: [...room.amenities] });
     setModalOpen(true);
   }
 
   function toggleAmenity(val: string) {
-    setForm((f) => ({
-      ...f,
-      amenities: f.amenities.includes(val)
-        ? f.amenities.filter((a) => a !== val)
-        : [...f.amenities, val],
-    }));
+    setForm((f) => ({ ...f, amenities: f.amenities.includes(val) ? f.amenities.filter((a) => a !== val) : [...f.amenities, val] }));
   }
 
   function handleSave() {
     if (!form.name.trim() || !form.floor.trim()) { toast.error("Name and floor are required"); return; }
-    saveMutation.mutate({
-      name: form.name.trim(),
-      description: form.description.trim() || undefined,
-      capacity: parseInt(form.capacity) || 10,
-      floor: form.floor.trim(),
-      amenities: form.amenities,
-    });
+    saveMutation.mutate({ name: form.name.trim(), description: form.description.trim() || undefined, capacity: parseInt(form.capacity) || 10, floor: form.floor.trim(), amenities: form.amenities });
   }
 
   return (
     <div className="p-8">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold">Rooms</h1>
-          <p className="text-muted-foreground">Manage meeting rooms and their details</p>
+          <h1 className="text-2xl font-bold text-slate-900">Rooms</h1>
+          <p className="text-muted-foreground text-sm mt-0.5">Manage meeting rooms and their details</p>
         </div>
-        <Button onClick={openCreate} className="flex items-center gap-2">
+        <Button onClick={openCreate} className="bg-blue-600 hover:bg-blue-700 gap-2">
           <Plus className="w-4 h-4" /> Add Room
         </Button>
       </div>
@@ -129,15 +104,17 @@ function AdminRoomsPage() {
         <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
       ) : rooms.length === 0 ? (
         <div className="text-center py-20 text-muted-foreground">
-          <Building2 className="w-10 h-10 mx-auto mb-2 opacity-30" />
-          <p className="text-sm mb-3">No rooms yet</p>
-          <Button onClick={openCreate} size="sm">Add your first room</Button>
+          <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
+            <Building2 className="w-7 h-7 opacity-40" />
+          </div>
+          <p className="font-medium">No rooms yet</p>
+          <Button onClick={openCreate} size="sm" className="mt-3 bg-blue-600 hover:bg-blue-700">Add your first room</Button>
         </div>
       ) : (
-        <div className="rounded-lg border bg-background overflow-hidden">
+        <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-secondary/50">
-              <tr>
+            <thead>
+              <tr className="bg-slate-50 border-b">
                 {["Room", "Floor", "Capacity", "Amenities", "Status", "Actions"].map((h) => (
                   <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{h}</th>
                 ))}
@@ -145,39 +122,41 @@ function AdminRoomsPage() {
             </thead>
             <tbody className="divide-y">
               {rooms.map((room) => (
-                <tr key={room.id} className="hover:bg-secondary/20 transition-colors">
-                  <td className="px-4 py-3">
-                    <p className="font-medium">{room.name}</p>
-                    {room.description && (
-                      <p className="text-xs text-muted-foreground truncate max-w-48">{room.description}</p>
-                    )}
+                <tr key={room.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-4 py-3.5">
+                    <p className="font-medium text-slate-800">{room.name}</p>
+                    {room.description && <p className="text-xs text-muted-foreground truncate max-w-52">{room.description}</p>}
                   </td>
-                  <td className="px-4 py-3">Floor {room.floor}</td>
-                  <td className="px-4 py-3">
-                    <span className="flex items-center gap-1"><Users className="w-3.5 h-3.5 text-muted-foreground" />{room.capacity}</span>
+                  <td className="px-4 py-3.5 text-slate-600">Floor {room.floor}</td>
+                  <td className="px-4 py-3.5">
+                    <span className="flex items-center gap-1.5 text-slate-600">
+                      <Users className="w-3.5 h-3.5 text-muted-foreground" />{room.capacity}
+                    </span>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3.5">
                     <div className="flex flex-wrap gap-1">
                       {room.amenities.slice(0, 3).map((a) => (
-                        <Badge key={a} variant="secondary" className="text-xs capitalize">{a}</Badge>
+                        <span key={a} className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-blue-50 text-blue-700 text-xs rounded-md border border-blue-100 capitalize">{a}</span>
                       ))}
                       {room.amenities.length > 3 && (
-                        <Badge variant="outline" className="text-xs">+{room.amenities.length - 3}</Badge>
+                        <span className="px-1.5 py-0.5 bg-slate-100 text-slate-500 text-xs rounded-md border">+{room.amenities.length - 3}</span>
                       )}
                     </div>
                   </td>
-                  <td className="px-4 py-3">
-                    <Badge variant={room.isActive ? "success" : "secondary"}>
+                  <td className="px-4 py-3.5">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${
+                      room.isActive ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-500 border-slate-200"
+                    }`}>
                       {room.isActive ? "Active" : "Inactive"}
-                    </Badge>
+                    </span>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3.5">
                     <div className="flex gap-1.5">
-                      <Button size="sm" variant="outline" onClick={() => openEdit(room)} className="h-7 w-7 p-0">
+                      <Button size="sm" variant="outline" onClick={() => openEdit(room)} className="h-7 w-7 p-0 hover:border-blue-300 hover:text-blue-600">
                         <Pencil className="w-3.5 h-3.5" />
                       </Button>
                       <Button size="sm" variant="outline" onClick={() => setDeleteTarget(room)}
-                        className="h-7 w-7 p-0 text-destructive border-destructive/30 hover:bg-destructive/10">
+                        className="h-7 w-7 p-0 text-red-500 border-red-200 hover:bg-red-50">
                         <Trash2 className="w-3.5 h-3.5" />
                       </Button>
                     </div>
@@ -191,9 +170,7 @@ function AdminRoomsPage() {
 
       <Dialog open={modalOpen} onOpenChange={setModalOpen}>
         <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{editTarget ? "Edit Room" : "Add New Room"}</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>{editTarget ? "Edit Room" : "Add New Room"}</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
             <div className="grid grid-cols-2 gap-3">
               <div className="col-span-2 space-y-1.5">
@@ -219,9 +196,12 @@ function AdminRoomsPage() {
               <div className="col-span-2 space-y-2">
                 <Label>Amenities</Label>
                 <div className="grid grid-cols-2 gap-2">
-                  {AMENITY_OPTIONS.map(({ value, label }) => (
-                    <label key={value} className="flex items-center gap-2 cursor-pointer text-sm">
+                  {AMENITY_OPTIONS.map(({ value, label, icon: Icon }) => (
+                    <label key={value} className={`flex items-center gap-2.5 cursor-pointer text-sm p-2.5 rounded-lg border transition-colors ${
+                      form.amenities.includes(value) ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-200 hover:border-slate-300"
+                    }`}>
                       <Checkbox checked={form.amenities.includes(value)} onCheckedChange={() => toggleAmenity(value)} />
+                      <Icon className="w-3.5 h-3.5" />
                       {label}
                     </label>
                   ))}
@@ -231,7 +211,7 @@ function AdminRoomsPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setModalOpen(false)}>Cancel</Button>
-            <Button onClick={handleSave} disabled={saveMutation.isPending}>
+            <Button onClick={handleSave} disabled={saveMutation.isPending} className="bg-blue-600 hover:bg-blue-700">
               {saveMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               {editTarget ? "Save Changes" : "Create Room"}
             </Button>
@@ -241,11 +221,9 @@ function AdminRoomsPage() {
 
       <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>
         <DialogContent className="sm:max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Delete Room</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>Delete Room</DialogTitle></DialogHeader>
           <p className="text-sm text-muted-foreground py-2">
-            Are you sure you want to delete <strong>{deleteTarget?.name}</strong>? This will also remove all associated bookings and cannot be undone.
+            Are you sure you want to delete <strong>{deleteTarget?.name}</strong>? This cannot be undone.
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteTarget(null)}>Cancel</Button>

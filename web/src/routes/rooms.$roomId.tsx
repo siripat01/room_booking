@@ -13,19 +13,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { Separator } from "../components/ui/separator";
 import { Textarea } from "../components/ui/textarea";
 import {
-  ArrowLeft,
-  Building2,
-  Users,
-  Monitor,
-  PenSquare,
-  Tv,
-  Wind,
-  Wifi,
-  CalendarDays,
-  Clock,
-  CheckCircle2,
-  Timer,
-  Loader2,
+  ArrowLeft, Building2, Users, Monitor, PenSquare, Tv, Wind, Wifi,
+  CalendarDays, Clock, CheckCircle2, Timer, Loader2, MapPin,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -109,7 +98,7 @@ function RoomDetailPage() {
 
   if (roomLoading) {
     return (
-      <div className="min-h-screen bg-background">
+      <div className="min-h-screen bg-slate-50">
         <Navbar user={user} />
         <div className="flex items-center justify-center h-[60vh]">
           <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -120,72 +109,91 @@ function RoomDetailPage() {
 
   if (!room) {
     return (
-      <div className="min-h-screen bg-background">
+      <div className="min-h-screen bg-slate-50">
         <Navbar user={user} />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-20 text-center text-muted-foreground">
-          <Building2 className="w-12 h-12 mx-auto mb-3 opacity-30" />
-          <p className="font-medium">Room not found</p>
-          <Button variant="link" asChild className="mt-2"><Link to="/home">Back to rooms</Link></Button>
+          <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
+            <Building2 className="w-8 h-8 opacity-40" />
+          </div>
+          <p className="font-semibold">Room not found</p>
+          <Button variant="link" asChild className="mt-2 text-blue-600"><Link to="/home">Back to rooms</Link></Button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-slate-50">
       <Navbar user={user} />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground mb-6">
-          <Link to="/home" className="flex items-center gap-1 hover:text-foreground transition-colors">
-            <ArrowLeft className="w-4 h-4" />Rooms
+      {/* Room header banner */}
+      <div className="bg-gradient-to-br from-blue-600 to-blue-800 text-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+          <Link to="/home" className="inline-flex items-center gap-1.5 text-blue-200 hover:text-white text-sm mb-5 transition-colors">
+            <ArrowLeft className="w-4 h-4" /> Back to rooms
           </Link>
-          <span>/</span>
-          <span className="text-foreground font-medium">{room.name}</span>
+          <div className="flex items-end justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-bold mb-2">{room.name}</h1>
+              <div className="flex items-center gap-3 text-blue-200 text-sm">
+                <span className="flex items-center gap-1.5">
+                  <MapPin className="w-4 h-4" /> Floor {room.floor}
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <Users className="w-4 h-4" /> Up to {room.capacity} people
+                </span>
+              </div>
+            </div>
+            <Badge className="bg-white/20 text-white border-white/30 text-sm px-3 py-1 backdrop-blur-sm">
+              {room.isActive ? "Available" : "Unavailable"}
+            </Badge>
+          </div>
         </div>
+      </div>
 
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
           {/* Room info */}
           <div className="lg:col-span-3 space-y-6">
-            <div className="h-64 bg-gradient-to-br from-secondary to-muted rounded-xl flex items-center justify-center text-muted-foreground/20">
-              <Building2 className="w-24 h-24" />
-            </div>
-
-            <div>
-              <div className="flex items-start justify-between gap-3 mb-2">
-                <h1 className="text-2xl font-bold">{room.name}</h1>
-                <Badge variant="secondary">Floor {room.floor}</Badge>
+            {room.description && (
+              <div className="bg-white rounded-xl border p-5">
+                <h2 className="font-semibold text-slate-800 mb-2">About this room</h2>
+                <p className="text-muted-foreground text-sm leading-relaxed">{room.description}</p>
               </div>
-              {room.description && <p className="text-muted-foreground">{room.description}</p>}
-            </div>
+            )}
 
-            <Separator />
-
+            {/* Stats */}
             <div className="grid grid-cols-2 gap-4">
-              <div className="flex items-center gap-3 p-4 rounded-lg border bg-secondary/30">
-                <Users className="w-5 h-5 text-muted-foreground" />
+              <div className="bg-white rounded-xl border p-4 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
+                  <Users className="w-5 h-5 text-blue-600" />
+                </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Capacity</p>
-                  <p className="font-semibold">{room.capacity} people</p>
+                  <p className="font-semibold text-slate-800">{room.capacity} people</p>
                 </div>
               </div>
-              <div className="flex items-center gap-3 p-4 rounded-lg border bg-secondary/30">
-                <Building2 className="w-5 h-5 text-muted-foreground" />
+              <div className="bg-white rounded-xl border p-4 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
+                  <MapPin className="w-5 h-5 text-blue-600" />
+                </div>
                 <div>
-                  <p className="text-xs text-muted-foreground">Floor</p>
-                  <p className="font-semibold">Floor {room.floor}</p>
+                  <p className="text-xs text-muted-foreground">Location</p>
+                  <p className="font-semibold text-slate-800">Floor {room.floor}</p>
                 </div>
               </div>
             </div>
 
             {room.amenities.length > 0 && (
-              <div>
-                <h2 className="font-semibold mb-3">Amenities</h2>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              <div className="bg-white rounded-xl border p-5">
+                <h2 className="font-semibold text-slate-800 mb-4">Amenities</h2>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                   {room.amenities.map((a) => (
-                    <div key={a} className="flex items-center gap-2 p-3 rounded-lg border text-sm">
-                      <span className="text-muted-foreground">{AMENITY_ICONS[a]}</span>
-                      {AMENITY_LABELS[a] ?? a}
+                    <div key={a} className="flex items-center gap-2.5 p-3 rounded-lg bg-slate-50 border border-slate-100 text-sm">
+                      <div className="w-7 h-7 rounded-md bg-blue-50 flex items-center justify-center text-blue-600 shrink-0">
+                        {AMENITY_ICONS[a]}
+                      </div>
+                      <span className="text-slate-700">{AMENITY_LABELS[a] ?? a}</span>
                     </div>
                   ))}
                 </div>
@@ -195,87 +203,99 @@ function RoomDetailPage() {
 
           {/* Booking form */}
           <div className="lg:col-span-2">
-            <Card className="sticky top-24">
-              <CardHeader>
+            <Card className="sticky top-24 border shadow-sm">
+              <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg">Book this room</CardTitle>
-                  {autoConfirm && (
-                    <Badge variant="success" className="flex items-center gap-1 text-xs">
-                      <CheckCircle2 className="w-3 h-3" /> Instant confirm
+                  <CardTitle className="text-base font-semibold">Book this room</CardTitle>
+                  {autoConfirm ? (
+                    <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-xs flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" /> Instant
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-xs flex items-center gap-1 text-amber-600 border-amber-200">
+                      <Timer className="w-3 h-3" /> Needs approval
                     </Badge>
                   )}
                 </div>
-                {!autoConfirm && (
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    <Timer className="w-3 h-3" /> Requires admin approval
-                  </p>
-                )}
               </CardHeader>
-              <CardContent>
+              <Separator />
+              <CardContent className="pt-5">
                 {booking ? (
-                  <div className="py-8 text-center space-y-3">
-                    {(booking as any).status === "CONFIRMED" ? (
-                      <CheckCircle2 className="w-12 h-12 text-green-500 mx-auto" />
-                    ) : (
-                      <Timer className="w-12 h-12 text-yellow-500 mx-auto" />
-                    )}
-                    <p className="font-semibold">
-                      {(booking as any).status === "CONFIRMED" ? "Booking Confirmed!" : "Booking Submitted!"}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {(booking as any).status === "CONFIRMED"
-                        ? "Your room is reserved. See it in My Bookings."
-                        : "Your request is pending admin approval."}
-                    </p>
-                    <div className="flex flex-col gap-2 pt-2">
+                  <div className="py-6 text-center space-y-4">
+                    <div className={`w-16 h-16 rounded-full mx-auto flex items-center justify-center ${
+                      (booking as any).status === "CONFIRMED" ? "bg-emerald-50" : "bg-amber-50"
+                    }`}>
+                      {(booking as any).status === "CONFIRMED" ? (
+                        <CheckCircle2 className="w-8 h-8 text-emerald-500" />
+                      ) : (
+                        <Timer className="w-8 h-8 text-amber-500" />
+                      )}
+                    </div>
+                    <div>
+                      <p className="font-semibold text-slate-800">
+                        {(booking as any).status === "CONFIRMED" ? "Booking Confirmed!" : "Request Submitted!"}
+                      </p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {(booking as any).status === "CONFIRMED"
+                          ? "Your room is reserved. Check My Bookings for details."
+                          : "Your request is pending admin approval."}
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-2 pt-1">
                       <Button onClick={() => setBooking(null)} variant="outline">Book Again</Button>
-                      <Button asChild><Link to="/bookings">View My Bookings</Link></Button>
+                      <Button asChild className="bg-blue-600 hover:bg-blue-700">
+                        <Link to="/bookings">View My Bookings</Link>
+                      </Button>
                     </div>
                   </div>
                 ) : (
                   <form onSubmit={handleBooking} className="space-y-4">
                     <div className="space-y-1.5">
-                      <Label htmlFor="date" className="flex items-center gap-1.5">
-                        <CalendarDays className="w-3.5 h-3.5" /> Date
+                      <Label htmlFor="date" className="text-sm font-medium flex items-center gap-1.5">
+                        <CalendarDays className="w-3.5 h-3.5 text-blue-600" /> Date
                       </Label>
                       <Input id="date" type="date" min={today} value={form.date}
-                        onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} required />
+                        onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} required
+                        className="border-slate-200" />
                     </div>
 
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1.5">
-                        <Label htmlFor="startTime" className="flex items-center gap-1.5">
-                          <Clock className="w-3.5 h-3.5" /> Start
+                        <Label htmlFor="startTime" className="text-sm font-medium flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5 text-blue-600" /> Start
                         </Label>
                         <Input id="startTime" type="time" value={form.startTime}
-                          onChange={(e) => setForm((f) => ({ ...f, startTime: e.target.value }))} required />
+                          onChange={(e) => setForm((f) => ({ ...f, startTime: e.target.value }))} required
+                          className="border-slate-200" />
                       </div>
                       <div className="space-y-1.5">
-                        <Label htmlFor="endTime">End</Label>
+                        <Label htmlFor="endTime" className="text-sm font-medium">End</Label>
                         <Input id="endTime" type="time" value={form.endTime}
-                          onChange={(e) => setForm((f) => ({ ...f, endTime: e.target.value }))} required />
+                          onChange={(e) => setForm((f) => ({ ...f, endTime: e.target.value }))} required
+                          className="border-slate-200" />
                       </div>
                     </div>
 
                     <div className="space-y-1.5">
-                      <Label htmlFor="attendees" className="flex items-center gap-1.5">
-                        <Users className="w-3.5 h-3.5" /> Attendees
+                      <Label htmlFor="attendees" className="text-sm font-medium flex items-center gap-1.5">
+                        <Users className="w-3.5 h-3.5 text-blue-600" /> Attendees
                       </Label>
                       <Input id="attendees" type="number" min="1" max={room.capacity}
                         value={form.attendees}
-                        onChange={(e) => setForm((f) => ({ ...f, attendees: e.target.value }))} required />
+                        onChange={(e) => setForm((f) => ({ ...f, attendees: e.target.value }))} required
+                        className="border-slate-200" />
                       <p className="text-xs text-muted-foreground">Max {room.capacity} people</p>
                     </div>
 
                     <div className="space-y-1.5">
-                      <Label htmlFor="purpose">Purpose / Topic</Label>
+                      <Label htmlFor="purpose" className="text-sm font-medium">Purpose / Topic</Label>
                       <Textarea id="purpose" placeholder="e.g. Team meeting, Lecture, Exam…"
                         value={form.purpose}
                         onChange={(e) => setForm((f) => ({ ...f, purpose: e.target.value }))}
-                        rows={3} required />
+                        rows={3} required className="border-slate-200 resize-none" />
                     </div>
 
-                    <Button type="submit" className="w-full" disabled={bookMutation.isPending}>
+                    <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white" disabled={bookMutation.isPending}>
                       {bookMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                       {bookMutation.isPending ? "Submitting…" : autoConfirm ? "Book Now" : "Request Booking"}
                     </Button>
@@ -289,4 +309,3 @@ function RoomDetailPage() {
     </div>
   );
 }
-
