@@ -1,5 +1,6 @@
 import type { PrismaClient } from "../../generated/prisma/client";
 import prisma from "../../libs/db";
+import { randomBytes } from "crypto";
 
 export class BookingService {
   constructor(private readonly prisma: PrismaClient) {}
@@ -106,6 +107,60 @@ export class BookingService {
     return this.prisma.booking.update({
       where: { id },
       data: { status: "REJECTED", rejectedReason: reason },
+      include: {
+        room: { select: { name: true, floor: true } },
+        user: { select: { name: true, email: true } },
+      },
+    });
+  }
+
+  async generateQr(id: string, userId: string, role: string) {
+    const booking = await this.prisma.booking.findUnique({ where: { id } });
+    if (!booking) throw new Error("Booking not found");
+    if (role !== "adminRole" && booking.userId !== userId) throw new Error("Unauthorized");
+    if (booking.status !== "CONFIRMED") throw new Error("Only confirmed bookings can generate a QR code");
+
+    const qrToken = randomBytes(32).toString("hex");
+    const qrExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    await this.prisma.booking.update({
+      where: { id },
+      data: { qrToken, qrExpiresAt },
+    });
+
+    return { qrToken, expiresAt: qrExpiresAt };
+  }
+
+  async checkIn(id: string, qrToken: string) {
+    const booking = await this.prisma.booking.findUnique({ where: { id } });
+    if (!booking) throw new Error("Booking not found");
+    if (booking.status !== "CONFIRMED") throw new Error("Booking is not confirmed");
+    if (booking.qrToken !== qrToken) throw new Error("Invalid QR token");
+    if (!booking.qrExpiresAt || booking.qrExpiresAt < new Date()) throw new Error("QR token has expired");
+
+    return this.prisma.booking.update({
+      where: { id },
+      data: {
+        status: "CHECKED_IN",
+        checkedInAt: new Date(),
+        qrToken: null,
+        qrExpiresAt: null,
+      },
+      include: {
+        room: { select: { name: true, floor: true } },
+        user: { select: { name: true, email: true } },
+      },
+    });
+  }
+
+  async checkOut(id: string) {
+    const booking = await this.prisma.booking.findUnique({ where: { id } });
+    if (!booking) throw new Error("Booking not found");
+    if (booking.status !== "CHECKED_IN") throw new Error("Booking is not checked in");
+
+    return this.prisma.booking.update({
+      where: { id },
+      data: { status: "COMPLETED", checkedOutAt: new Date() },
       include: {
         room: { select: { name: true, floor: true } },
         user: { select: { name: true, email: true } },
