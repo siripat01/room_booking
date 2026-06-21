@@ -69,6 +69,8 @@ export function getStatusLabel(status: DeviceStatus): string {
       return "Offline";
     case "unknown":
       return "ไม่ทราบ";
+    default:
+      return "";
   }
 }
 
@@ -80,6 +82,8 @@ export function getStatusBadgeVariant(status: DeviceStatus): "default" | "succes
       return "destructive";
     case "unknown":
       return "warning";
+    default:
+      return "default";
   }
 }
 
