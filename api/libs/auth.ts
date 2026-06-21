@@ -7,6 +7,8 @@ import { hashPassword, verifyPassword } from "../utils/password";
 
 import { ac, teacherRole, userRole, adminRole } from "./permission";
 
+const isProd = process.env.NODE_ENV === "production";
+
 export const auth = betterAuth({
   database: prismaAdapter(prisma, {
     provider: "postgresql",
@@ -16,6 +18,13 @@ export const auth = betterAuth({
   trustedOrigins: [
     process.env.FRONTEND_URL || "http://localhost:3001",
   ],
+
+  advanced: {
+    useSecureCookies: isProd,
+    defaultCookieAttributes: isProd
+      ? { sameSite: "none", secure: true }
+      : { sameSite: "lax", secure: false },
+  },
 
   basePath: "/api/auth",
   plugins: [
