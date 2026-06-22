@@ -14,38 +14,55 @@ export class BookingService {
     purpose?: string;
     autoConfirm: boolean;
     approvedBy?: string;
+    userRole?: string;
   }) {
     if (data.startTime < new Date()) throw new Error("Cannot book a room in the past");
 
-    const conflict = await this.prisma.booking.findFirst({
-      where: {
-        roomId: data.roomId,
-        status: { in: ["PENDING", "CONFIRMED", "CHECKED_IN"] },
-        AND: [
-          { startTime: { lt: data.endTime } },
-          { endTime: { gt: data.startTime } },
-        ],
-      },
-    });
-    if (conflict) throw new Error("Room already has a booking overlapping this time slot");
+    // Booking limit check (skip for adminRole)
+    if (data.userRole !== "adminRole") {
+      const activeLimit = data.userRole === "teacherRole" ? 5 : 3;
+      const activeCount = await this.prisma.booking.count({
+        where: { userId: data.userId, status: { in: ["PENDING", "CONFIRMED"] } },
+      });
+      if (activeCount >= activeLimit) {
+        throw new Error(
+          `คุณมีการจองที่ยังไม่เสร็จสิ้น ${activeCount} รายการ (สูงสุด ${activeLimit} รายการ) กรุณารอให้การจองก่อนหน้าสิ้นสุดก่อน`,
+        );
+      }
+    }
 
-    return this.prisma.booking.create({
-      data: {
-        userId: data.userId,
-        roomId: data.roomId,
-        startTime: data.startTime,
-        endTime: data.endTime,
-        attendees: data.attendees,
-        purpose: data.purpose,
-        status: data.autoConfirm ? "CONFIRMED" : "PENDING",
-        approvedAt: data.autoConfirm ? new Date() : undefined,
-        approvedBy: data.autoConfirm ? (data.approvedBy ?? data.userId) : undefined,
+    // Race-condition-safe conflict check inside a serializable transaction
+    return this.prisma.$transaction(
+      async (tx) => {
+        const conflict = await tx.booking.findFirst({
+          where: {
+            roomId: data.roomId,
+            status: { in: ["PENDING", "CONFIRMED", "CHECKED_IN"] },
+            AND: [{ startTime: { lt: data.endTime } }, { endTime: { gt: data.startTime } }],
+          },
+        });
+        if (conflict) throw new Error("Room already has a booking overlapping this time slot");
+
+        return tx.booking.create({
+          data: {
+            userId: data.userId,
+            roomId: data.roomId,
+            startTime: data.startTime,
+            endTime: data.endTime,
+            attendees: data.attendees,
+            purpose: data.purpose,
+            status: data.autoConfirm ? "CONFIRMED" : "PENDING",
+            approvedAt: data.autoConfirm ? new Date() : undefined,
+            approvedBy: data.autoConfirm ? (data.approvedBy ?? data.userId) : undefined,
+          },
+          include: {
+            room: { select: { name: true, floor: true } },
+            user: { select: { name: true, email: true } },
+          },
+        });
       },
-      include: {
-        room: { select: { name: true, floor: true } },
-        user: { select: { name: true, email: true } },
-      },
-    });
+      { isolationLevel: "Serializable" },
+    );
   }
 
   private async expireStaleBookings() {
@@ -55,14 +72,15 @@ export class BookingService {
     });
   }
 
-  async getBookings(userId: string, role: string, params?: { status?: string; roomId?: string; userId?: string; date?: string; page?: number; limit?: number }) {
+  async getBookings(userId: string, role: string, params?: { status?: string; roomId?: string; userId?: string; date?: string; page?: number; limit?: number; forSelf?: boolean }) {
     await this.expireStaleBookings();
     const isAdmin = role === "adminRole";
     const page = params?.page ?? 1;
     const limit = params?.limit ?? 20;
     const skip = (page - 1) * limit;
 
-    const where: any = isAdmin ? {} : { userId };
+    // forSelf=true forces filtering by current user regardless of role (used by My Bookings page)
+    const where: any = (isAdmin && !params?.forSelf) ? {} : { userId };
     if (params?.status) where.status = params.status;
     if (params?.roomId) where.roomId = params.roomId;
     if (isAdmin && params?.userId) where.userId = params.userId;

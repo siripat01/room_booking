@@ -64,6 +64,7 @@ export const bookingsQuery = (params?: { status?: string; page?: number }) => ({
       query: {
         status: params?.status,
         page: params?.page?.toString(),
+        forSelf: "true",
       },
     });
     if (error) throw error;
