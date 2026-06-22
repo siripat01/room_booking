@@ -47,7 +47,7 @@ const roomRoutes = new Elysia()
     }, { auth: true })
     .post("/rooms", async ({ user, body, status }) => {
         if (user.role !== "adminRole") return status(403);
-        return await roomService.createRoom({ ...body, amenities: body.amenities ?? [] });
+        return await roomService.createRoom({ ...body, amenities: body.amenities ?? [], allowedRoles: body.allowedRoles ?? [] });
     }, {
         auth: true,
         body: t.Object({
@@ -56,6 +56,7 @@ const roomRoutes = new Elysia()
             capacity: t.Number(),
             floor: t.String(),
             amenities: t.Optional(t.Array(t.String())),
+            allowedRoles: t.Optional(t.Array(t.String())),
         }),
     })
     .put("/rooms/:id", async ({ user, params: { id }, body, status }) => {
@@ -69,6 +70,7 @@ const roomRoutes = new Elysia()
             capacity: t.Optional(t.Number()),
             floor: t.Optional(t.String()),
             amenities: t.Optional(t.Array(t.String())),
+            allowedRoles: t.Optional(t.Array(t.String())),
             isActive: t.Optional(t.Boolean()),
         }),
     })

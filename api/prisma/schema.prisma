@@ -111,7 +111,9 @@ model Room {
 
   // Amenities เก็บเป็น array ของ string
   // เช่น ["projector", "whiteboard", "tv", "ac"]
-  amenities String[] @default([])
+  amenities    String[] @default([])
+  // Roles allowed to book this room. Empty = everyone can book.
+  allowedRoles String[] @default([])
 
   // Relations
   // images        RoomImage[]

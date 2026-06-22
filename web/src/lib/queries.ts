@@ -163,6 +163,7 @@ export type Room = {
   capacity: number;
   floor: string;
   amenities: string[];
+  allowedRoles: string[];
   isActive: boolean;
 };
 
