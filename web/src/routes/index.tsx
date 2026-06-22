@@ -1,4 +1,5 @@
-import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
+import { sessionQuery } from "../lib/queries";
 import { authClient } from "../lib/auth";
 import { Button } from "../components/ui/button";
 import { useState } from "react";
@@ -6,6 +7,15 @@ import { toast } from "sonner";
 import { Building2, CalendarDays, CheckCircle2, Users } from "lucide-react";
 
 export const Route = createFileRoute("/")({
+  beforeLoad: async ({ context: { queryClient }, search }) => {
+    if (typeof window === "undefined") return;
+    try {
+      const user = await queryClient.ensureQueryData(sessionQuery());
+      if (user) throw redirect({ to: (search as any).redirect ?? "/home" });
+    } catch (e: any) {
+      if (e?.isRedirect) throw e;
+    }
+  },
   validateSearch: (search: Record<string, unknown>): { redirect?: string } => ({
     redirect: typeof search.redirect === "string" && search.redirect.startsWith("/")
       ? search.redirect
