@@ -18,6 +18,12 @@ export class BookingService {
   }) {
     if (data.startTime < new Date()) throw new Error("Cannot book a room in the past");
 
+    // Check room's allowed roles
+    const room = await this.prisma.room.findUnique({ where: { id: data.roomId }, select: { allowedRoles: true } });
+    if (room && room.allowedRoles.length > 0 && data.userRole && !room.allowedRoles.includes(data.userRole)) {
+      throw new Error("คุณไม่มีสิทธิ์จองห้องนี้");
+    }
+
     // Booking limit check (skip for adminRole)
     if (data.userRole !== "adminRole") {
       const activeLimit = data.userRole === "teacherRole" ? 5 : 3;

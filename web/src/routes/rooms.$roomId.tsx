@@ -147,6 +147,8 @@ function RoomDetailPage() {
   }
 
   const autoConfirm = user?.isTeacher || user?.isAdmin;
+  const userRole = user?.isAdmin ? "adminRole" : user?.isTeacher ? "teacherRole" : "userRole";
+  const canBook = !room || !room.allowedRoles?.length || room.allowedRoles.includes(userRole);
 
   if (roomLoading) {
     return (
@@ -272,7 +274,19 @@ function RoomDetailPage() {
               </CardHeader>
               <Separator />
               <CardContent className="pt-5">
-                {booking ? (
+                {!canBook ? (
+                  <div className="py-8 text-center space-y-3">
+                    <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center mx-auto">
+                      <Users className="w-7 h-7 text-red-400" />
+                    </div>
+                    <p className="font-medium text-slate-800">ไม่สามารถจองได้</p>
+                    <p className="text-sm text-muted-foreground">ห้องนี้เปิดให้จองเฉพาะ{" "}
+                      {room?.allowedRoles?.map((r) =>
+                        r === "teacherRole" ? "อาจารย์" : r === "adminRole" ? "แอดมิน" : "นักศึกษา"
+                      ).join(", ")} เท่านั้น
+                    </p>
+                  </div>
+                ) : booking ? (
                   <div className="py-6 text-center space-y-4">
                     <div className={`w-16 h-16 rounded-full mx-auto flex items-center justify-center ${
                       (booking as any).status === "CONFIRMED" ? "bg-emerald-50" : "bg-amber-50"
@@ -304,7 +318,7 @@ function RoomDetailPage() {
                   <form onSubmit={handleBooking} className="space-y-4">
                     <div className="space-y-1.5">
                       <Label htmlFor="date" className="text-sm font-medium flex items-center gap-1.5">
-                        <CalendarDays className="w-3.5 h-3.5 text-blue-600" /> Date
+                        <CalendarDays className="w-3.5 h-3.5 text-blue-600" /> วันที่
                       </Label>
                       <Input id="date" type="date" min={today} value={form.date}
                         onChange={(e) => setForm((f) => ({ ...f, date: e.target.value, slot: "" }))} required
