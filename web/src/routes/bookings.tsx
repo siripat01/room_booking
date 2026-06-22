@@ -46,12 +46,12 @@ const STATUS_CONFIG: Record<BookingStatus, {
   COMPLETED:  { label: "Completed",        variant: "secondary",   icon: <CheckCircle2 className="w-3.5 h-3.5" />, border: "border-l-slate-300",   dot: "bg-slate-300" },
   CANCELLED:  { label: "Cancelled",        variant: "outline",     icon: <XCircle className="w-3.5 h-3.5" />,      border: "border-l-slate-300",   dot: "bg-slate-300" },
   REJECTED:   { label: "Rejected",         variant: "destructive", icon: <XCircle className="w-3.5 h-3.5" />,      border: "border-l-red-400",     dot: "bg-red-400" },
-  EXPIRED:    { label: "Expired",          variant: "outline",     icon: <AlertCircle className="w-3.5 h-3.5" />,  border: "border-l-slate-300",   dot: "bg-slate-300" },
+  EXPIRED:    { label: "ไม่ได้เช็คอิน",     variant: "outline",     icon: <AlertCircle className="w-3.5 h-3.5" />,  border: "border-l-slate-300",   dot: "bg-slate-300" },
 };
 
 const TAB_FILTERS: { label: string; statuses: BookingStatus[] | null }[] = [
-  { label: "Upcoming",  statuses: ["PENDING", "CONFIRMED", "CHECKED_IN"] },
-  { label: "Past",      statuses: ["COMPLETED", "EXPIRED"] },
+  { label: "Upcoming",  statuses: ["PENDING", "CONFIRMED", "CHECKED_IN", "EXPIRED"] },
+  { label: "Past",      statuses: ["COMPLETED"] },
   { label: "Cancelled", statuses: ["CANCELLED", "REJECTED"] },
   { label: "All",       statuses: null },
 ];
