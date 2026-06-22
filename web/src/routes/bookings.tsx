@@ -7,9 +7,11 @@ import { app } from "../lib/api";
 import { Navbar } from "../components/Navbar";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../components/ui/dialog";
+import { QRCodeSVG } from "qrcode.react";
 import {
-  CalendarDays, Clock, Building2, Users, Loader2,
-  XCircle, CheckCircle2, AlertCircle, Timer, MapPin,
+  CalendarDays, Clock, Users, Loader2,
+  XCircle, CheckCircle2, AlertCircle, Timer, MapPin, QrCode,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -54,10 +56,13 @@ const TAB_FILTERS: { label: string; statuses: BookingStatus[] | null }[] = [
   { label: "All",       statuses: null },
 ];
 
+type QRState = { bookingId: string; token: string; expiresAt: string; roomName: string } | null;
+
 function BookingsPage() {
   const { user } = useCurrentUser();
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState(0);
+  const [qrState, setQrState] = useState<QRState>(null);
 
   const { data, isLoading: loading } = useQuery(bookingsQuery());
   const bookings: Booking[] = (data as any)?.bookings ?? [];
@@ -72,6 +77,18 @@ function BookingsPage() {
       toast.success("Booking cancelled.");
     },
     onError: () => toast.error("Could not cancel booking."),
+  });
+
+  const qrMutation = useMutation({
+    mutationFn: async (booking: Booking) => {
+      const res = await fetch(`/api/bookings/${booking.id}/qr`);
+      if (!res.ok) throw new Error("Failed to generate QR code");
+      return { ...(await res.json()), roomName: booking.room?.name ?? "Room" };
+    },
+    onSuccess: (data, booking) => {
+      setQrState({ bookingId: booking.id, token: data.qrToken, expiresAt: data.expiresAt, roomName: data.roomName });
+    },
+    onError: () => toast.error("Could not generate QR code."),
   });
 
   const activeStatuses = TAB_FILTERS[activeTab].statuses;
@@ -142,26 +159,59 @@ function BookingsPage() {
                 booking={booking}
                 onCancel={(id) => cancelMutation.mutate(id)}
                 cancelling={cancelMutation.isPending && cancelMutation.variables === booking.id}
+                onShowQR={() => qrMutation.mutate(booking)}
+                qrLoading={qrMutation.isPending && qrMutation.variables?.id === booking.id}
               />
             ))}
           </div>
         )}
       </main>
+
+      <Dialog open={!!qrState} onOpenChange={(o) => { if (!o) setQrState(null); }}>
+        <DialogContent className="max-w-xs text-center">
+          <DialogHeader>
+            <DialogTitle className="flex items-center justify-center gap-2">
+              <QrCode className="w-5 h-5" /> Check-in QR Code
+            </DialogTitle>
+            <DialogDescription>
+              Show this to the kiosk at <span className="font-medium text-foreground">{qrState?.roomName}</span>
+            </DialogDescription>
+          </DialogHeader>
+
+          {qrState && (
+            <div className="flex flex-col items-center gap-4 py-2">
+              <div className="p-4 bg-white rounded-2xl border shadow-sm">
+                <QRCodeSVG value={qrState.token} size={200} level="M" />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Expires at {new Date(qrState.expiresAt).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
+                {" "}· valid for 10 minutes
+              </p>
+              <Button variant="outline" size="sm" onClick={() => qrMutation.mutate(bookings.find((b) => b.id === qrState.bookingId)!)}>
+                Refresh QR
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
 function BookingCard({
-  booking, onCancel, cancelling,
+  booking, onCancel, cancelling, onShowQR, qrLoading,
 }: {
   booking: Booking;
   onCancel: (id: string) => void;
   cancelling: boolean;
+  onShowQR: () => void;
+  qrLoading: boolean;
 }) {
   const cfg = STATUS_CONFIG[booking.status];
   const start = new Date(booking.startTime);
   const end = new Date(booking.endTime);
   const canCancel = ["PENDING", "CONFIRMED"].includes(booking.status);
+  const canShowQR = booking.status === "CONFIRMED";
 
   const formatDate = (d: Date) =>
     d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
@@ -219,17 +269,30 @@ function BookingCard({
             )}
           </div>
 
-          {canCancel && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => onCancel(booking.id)}
-              disabled={cancelling}
-              className="shrink-0 text-red-600 border-red-200 hover:bg-red-50"
-            >
-              {cancelling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Cancel"}
-            </Button>
-          )}
+          <div className="flex flex-col gap-2 shrink-0">
+            {canShowQR && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={onShowQR}
+                disabled={qrLoading}
+                className="text-blue-600 border-blue-200 hover:bg-blue-50"
+              >
+                {qrLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><QrCode className="w-3.5 h-3.5 mr-1" />QR Code</>}
+              </Button>
+            )}
+            {canCancel && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => onCancel(booking.id)}
+                disabled={cancelling}
+                className="text-red-600 border-red-200 hover:bg-red-50"
+              >
+                {cancelling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Cancel"}
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     </div>
