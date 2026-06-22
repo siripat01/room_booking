@@ -15,6 +15,8 @@ export class BookingService {
     autoConfirm: boolean;
     approvedBy?: string;
   }) {
+    if (data.startTime < new Date()) throw new Error("Cannot book a room in the past");
+
     const conflict = await this.prisma.booking.findFirst({
       where: {
         roomId: data.roomId,
