@@ -109,7 +109,7 @@ export class DeviceService {
         const currentBooking = await this.prisma.booking.findFirst({
             where: {
                 roomId: device.roomId,
-                status: { in: ["CONFIRMED", "CHECKED_IN"] },
+                status: { in: ["CHECKED_IN"] },
                 startTime: { lte: now },
                 endTime: { gt: now },
             },

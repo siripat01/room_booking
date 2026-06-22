@@ -48,7 +48,15 @@ export class BookingService {
     });
   }
 
+  private async expireStaleBookings() {
+    await this.prisma.booking.updateMany({
+      where: { status: "CONFIRMED", endTime: { lt: new Date() } },
+      data: { status: "EXPIRED" },
+    });
+  }
+
   async getBookings(userId: string, role: string, params?: { status?: string; roomId?: string; userId?: string; date?: string; page?: number; limit?: number }) {
+    await this.expireStaleBookings();
     const isAdmin = role === "adminRole";
     const page = params?.page ?? 1;
     const limit = params?.limit ?? 20;
@@ -145,10 +153,12 @@ export class BookingService {
   }
 
   async generateQr(id: string, userId: string, role: string) {
+    await this.expireStaleBookings();
     const booking = await this.prisma.booking.findUnique({ where: { id } });
     if (!booking) throw new Error("Booking not found");
     if (role !== "adminRole" && booking.userId !== userId) throw new Error("Unauthorized");
     if (booking.status !== "CONFIRMED") throw new Error("Only confirmed bookings can generate a QR code");
+    if (booking.endTime < new Date()) throw new Error("Booking time has already passed");
 
     const qrToken = randomBytes(32).toString("hex");
     const qrExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
