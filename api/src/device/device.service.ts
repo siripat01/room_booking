@@ -33,6 +33,7 @@ export class DeviceService {
             return await this.prisma.device.findMany({
                 include: { room: true },
                 orderBy: { createdAt: "desc" },
+                take: 200,
             });
         } catch (e) {
             console.log(e);
@@ -147,6 +148,7 @@ export class DeviceService {
             },
             include: { user: { select: { name: true } } },
             orderBy: { startTime: "asc" },
+            take: 50,
         });
 
         return { device, bookings };

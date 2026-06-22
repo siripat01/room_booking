@@ -59,6 +59,7 @@ export class ReportService {
         const rooms = await this.prisma.room.findMany({
             where: { isActive: true, ...(roomId ? { id: roomId } : {}) },
             select: { id: true, name: true, floor: true, capacity: true },
+            take: 200,
         });
 
         const usage = await this.prisma.booking.groupBy({
@@ -89,6 +90,7 @@ export class ReportService {
             where,
             select: { createdAt: true, status: true },
             orderBy: { createdAt: "asc" },
+            take: 5000,
         });
 
         // group by date string
@@ -111,6 +113,7 @@ export class ReportService {
         const bookings = await this.prisma.booking.findMany({
             where,
             select: { startTime: true },
+            take: 5000,
         });
 
         const hourMap: Record<number, number> = {};
@@ -151,10 +154,8 @@ export class ReportService {
     }
 
     private dateFilter(from?: string, to?: string) {
-        if (!from && !to) return {};
-        const filter: any = {};
-        if (from) filter.gte = new Date(from);
-        if (to) filter.lte = new Date(to);
-        return { createdAt: filter };
+        const toDate = to ? new Date(to) : new Date();
+        const fromDate = from ? new Date(from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        return { createdAt: { gte: fromDate, lte: toDate } };
     }
 }

@@ -17,6 +17,7 @@ export class RoomService {
             where,
             include: { timeSlots: true },
             orderBy: { name: "asc" },
+            take: 200,
         });
 
         // filter out rooms with conflicting bookings for the requested time window
@@ -31,6 +32,8 @@ export class RoomService {
                     endTime: { gt: start },
                 },
                 select: { roomId: true },
+                distinct: ["roomId"],
+                take: 500,
             });
 
             const conflictedIds = new Set(conflicted.map((b) => b.roomId));
@@ -102,6 +105,7 @@ export class RoomService {
                     status: true,
                 },
                 orderBy: { startTime: "asc" },
+                take: 50,
             });
         } catch (e) {
             console.log(e);
@@ -134,6 +138,7 @@ export class RoomService {
             },
             select: { startTime: true, endTime: true, status: true },
             orderBy: { startTime: "asc" },
+            take: 50,
         });
 
         return {
@@ -155,6 +160,7 @@ export class RoomService {
         return this.prisma.timeSlot.findMany({
             where: { roomId },
             orderBy: { dayOfWeek: "asc" },
+            take: 7,
         });
     }
 
@@ -177,6 +183,7 @@ export class RoomService {
         return this.prisma.roomClosure.findMany({
             where: { roomId },
             orderBy: { date: "asc" },
+            take: 200,
         });
     }
 
