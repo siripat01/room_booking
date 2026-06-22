@@ -1,6 +1,5 @@
-// vite.config.ts
 import { defineConfig } from "vite";
-import { tanstackStart } from "@tanstack/react-start/plugin/vite";
+import { TanStackRouterVite } from "@tanstack/router-plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
@@ -13,12 +12,7 @@ export default defineConfig({
   },
   plugins: [
     tailwindcss(),
-    tanstackStart({
-      client: {
-        entry: "./src/entry-client.tsx",
-      },
-    }),
-    // react's vite plugin must come after start's vite plugin
+    TanStackRouterVite(),
     viteReact(),
   ],
 });

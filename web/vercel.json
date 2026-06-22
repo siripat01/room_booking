@@ -1,9 +1,13 @@
 {
   "buildCommand": "pnpm build",
   "installCommand": "pnpm install",
-  "outputDirectory": "dist/client",
+  "outputDirectory": "dist",
   "framework": null,
   "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://room-booking-api.fly.dev/api/:path*"
+    },
     {
       "source": "/(.*)",
       "destination": "/index.html"
