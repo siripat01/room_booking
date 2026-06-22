@@ -18,6 +18,7 @@ const bookingRoutes = new Elysia({ prefix: "/bookings" })
                 page: query.page ? Number(query.page) : undefined,
                 limit: query.limit ? Number(query.limit) : undefined,
                 forSelf: query.forSelf === "true",
+                search: query.search,
             });
         },
         {
@@ -30,6 +31,7 @@ const bookingRoutes = new Elysia({ prefix: "/bookings" })
                 page: t.Optional(t.String()),
                 limit: t.Optional(t.String()),
                 forSelf: t.Optional(t.String()),
+                search: t.Optional(t.String()),
             }),
         },
     )

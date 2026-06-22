@@ -78,7 +78,7 @@ export class BookingService {
     });
   }
 
-  async getBookings(userId: string, role: string, params?: { status?: string; roomId?: string; userId?: string; date?: string; page?: number; limit?: number; forSelf?: boolean }) {
+  async getBookings(userId: string, role: string, params?: { status?: string; roomId?: string; userId?: string; date?: string; page?: number; limit?: number; forSelf?: boolean; search?: string }) {
     await this.expireStaleBookings();
     const isAdmin = role === "adminRole";
     const page = params?.page ?? 1;
@@ -97,6 +97,15 @@ export class BookingService {
       const start = new Date(`${params.date}T00:00:00.000Z`);
       const end = new Date(`${params.date}T23:59:59.999Z`);
       where.startTime = { gte: start, lte: end };
+    }
+    if (params?.search) {
+      const q = params.search;
+      where.OR = [
+        { room: { name: { contains: q, mode: "insensitive" } } },
+        { user: { name: { contains: q, mode: "insensitive" } } },
+        { user: { email: { contains: q, mode: "insensitive" } } },
+        { purpose: { contains: q, mode: "insensitive" } },
+      ];
     }
 
     const [bookings, total] = await Promise.all([

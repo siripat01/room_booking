@@ -83,7 +83,7 @@ export const bookingQuery = (id: string) => ({
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
 
-export const adminBookingsQuery = (params?: { status?: string; page?: number }) => ({
+export const adminBookingsQuery = (params?: { status?: string; page?: number; search?: string }) => ({
   queryKey: ["admin", "bookings", params],
   queryFn: async () => {
     const { data, error } = await (app.api.bookings as any).get({
@@ -91,6 +91,7 @@ export const adminBookingsQuery = (params?: { status?: string; page?: number }) 
         status: params?.status,
         page: params?.page?.toString(),
         limit: "30",
+        search: params?.search,
       },
     });
     if (error) throw error;

@@ -2,7 +2,7 @@ import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCurrentUser } from "../lib/useCurrentUser";
-import { roomQuery, sessionQuery } from "../lib/queries";
+import { roomQuery, roomAvailabilityQuery, sessionQuery } from "../lib/queries";
 import { app } from "../lib/api";
 import { Navbar } from "../components/Navbar";
 import { Button } from "../components/ui/button";
@@ -72,7 +72,7 @@ function RoomDetailPage() {
   const { data: room, isLoading: roomLoading } = useQuery(roomQuery(roomId));
   const [booking, setBooking] = useState<BookingResult | null>(null);
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = new Date().toLocaleDateString("en-CA");
   const [form, setForm] = useState({
     date: today,
     slot: "" as string,
@@ -81,12 +81,7 @@ function RoomDetailPage() {
   });
 
   const { data: availability } = useQuery({
-    queryKey: ["availability", roomId, form.date],
-    queryFn: async () => {
-      const res = await fetch(`/api/rooms/${roomId}/availability?date=${form.date}`);
-      if (!res.ok) return null;
-      return res.json() as Promise<{ bookings: Array<{ startTime: string; endTime: string }> }>;
-    },
+    ...roomAvailabilityQuery(roomId, form.date),
     staleTime: 30_000,
   });
 

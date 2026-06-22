@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { adminBookingsQuery, type BookingStatus, type Booking } from "../../lib/queries";
 import { app } from "../../lib/api";
@@ -46,16 +46,29 @@ function AdminBookingsPage() {
   const qc = useQueryClient();
   const [tab, setTab] = useState(0);
   const [page, setPage] = useState(1);
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [rejectTarget, setRejectTarget] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
+  const tabTotals = useRef<Record<number, number>>({});
+
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => { setSearch(searchInput); setPage(1); }, 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
 
   const { data, isLoading: loading } = useQuery(
-    adminBookingsQuery({ status: TABS[tab].statusQuery, page }),
+    adminBookingsQuery({ status: TABS[tab].statusQuery, page, search: search || undefined }),
   );
   const bookings: Booking[] = (data as any)?.bookings ?? [];
   const total: number = (data as any)?.total ?? 0;
   const totalPages: number = (data as any)?.totalPages ?? 1;
+
+  // Keep per-tab totals so inactive tabs still show a count badge
+  useEffect(() => {
+    if (!loading && total > 0) tabTotals.current[tab] = total;
+  }, [loading, tab, total]);
 
   const approveMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -80,13 +93,7 @@ function AdminBookingsPage() {
     onError: () => toast.error("Failed to reject"),
   });
 
-  const displayed = search
-    ? bookings.filter((b) => {
-        const q = search.toLowerCase();
-        return b.room?.name?.toLowerCase().includes(q) || b.user?.name?.toLowerCase().includes(q) ||
-          b.user?.email?.toLowerCase().includes(q) || b.purpose?.toLowerCase().includes(q);
-      })
-    : bookings;
+  const displayed = bookings;
 
   function switchTab(i: number) {
     setTab(i);
@@ -108,25 +115,30 @@ function AdminBookingsPage() {
         <div className="px-5 pt-4 pb-0 border-b">
           <div className="relative max-w-sm mb-4">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Search by room, user, or purpose…" value={search}
-              onChange={(e) => setSearch(e.target.value)} className="pl-9 border-slate-200 bg-slate-50" />
+            <Input placeholder="Search by room, user, or purpose…" value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)} className="pl-9 border-slate-200 bg-slate-50" />
           </div>
           <div className="flex gap-0">
-            {TABS.map(({ label }, i) => (
-              <button key={label} onClick={() => switchTab(i)}
-                className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                  tab === i
-                    ? "border-blue-600 text-blue-700"
-                    : "border-transparent text-muted-foreground hover:text-slate-700"
-                }`}>
-                {label}
-                {tab === i && total > 0 && (
-                  <span className="ml-1.5 rounded-full px-1.5 py-0.5 text-xs bg-blue-100 text-blue-700">
-                    {total}
-                  </span>
-                )}
-              </button>
-            ))}
+            {TABS.map(({ label }, i) => {
+              const displayCount = tab === i ? total : (tabTotals.current[i] ?? 0);
+              return (
+                <button key={label} onClick={() => switchTab(i)}
+                  className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                    tab === i
+                      ? "border-blue-600 text-blue-700"
+                      : "border-transparent text-muted-foreground hover:text-slate-700"
+                  }`}>
+                  {label}
+                  {displayCount > 0 && (
+                    <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-xs ${
+                      tab === i ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-600"
+                    }`}>
+                      {displayCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
 

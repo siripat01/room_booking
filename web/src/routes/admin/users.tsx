@@ -14,10 +14,6 @@ import { Users, Search, Loader2, ShieldAlert, CalendarDays, ChevronLeft, Chevron
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/users")({
-  loader: ({ context: { queryClient } }) => {
-    if (typeof window === "undefined") return;
-    return queryClient.ensureQueryData(adminUsersQuery());
-  },
   component: AdminUsersPage,
 });
 

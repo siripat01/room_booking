@@ -154,8 +154,10 @@ export class ReportService {
     }
 
     private dateFilter(from?: string, to?: string) {
-        const toDate = to ? new Date(to) : new Date();
-        const fromDate = from ? new Date(from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-        return { createdAt: { gte: fromDate, lte: toDate } };
+        if (!from && !to) return {};
+        const filter: any = {};
+        if (from) filter.gte = new Date(from);
+        if (to) filter.lte = new Date(to);
+        return { createdAt: filter };
     }
 }
