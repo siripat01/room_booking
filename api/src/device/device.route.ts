@@ -70,18 +70,14 @@ export const deviceRoutes = new Elysia()
         const device = await prisma.device.findFirst({ where: { id, deviceKey } });
         if (!device) return status(403);
         return await deviceService.getDeviceStatus(id);
-    }, {
-        auth: false,
-    })
+    }, { auth: false })
     .get("/devices/:id/schedule", async ({ params: { id }, headers, status }) => {
         const deviceKey = headers["x-device-key"];
         if (!deviceKey) return status(401);
         const device = await prisma.device.findFirst({ where: { id, deviceKey } });
         if (!device) return status(403);
         return await deviceService.getDeviceSchedule(id);
-    }, {
-        auth: false,
-    })
+    }, { auth: false })
     .post("/devices/:id/scan", async ({ params: { id }, headers, body, status }) => {
         const deviceKey = headers["x-device-key"];
         if (!deviceKey) return status(401);
@@ -102,6 +98,4 @@ export const deviceRoutes = new Elysia()
         const device = await prisma.device.findFirst({ where: { id, deviceKey } });
         if (!device) return status(403);
         return await deviceService.heartbeat(id);
-    }, {
-        auth: false,
-    })
+    }, { auth: false })
