@@ -90,7 +90,7 @@ function AdminUsersPage() {
     name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-900">Users</h1>
         <p className="text-muted-foreground text-sm mt-0.5">Manage user roles and access</p>
@@ -113,7 +113,7 @@ function AdminUsersPage() {
         </div>
       ) : (
         <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto"><table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-50 border-b">
                 {["User", "Email", "Role", "Bookings", "Joined", "Status", "Actions"].map((h) => (
@@ -195,7 +195,7 @@ function AdminUsersPage() {
                 );
               })}
             </tbody>
-          </table>
+          </table></div>
         </div>
       )}
 

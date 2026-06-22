@@ -180,7 +180,7 @@ function AdminDevicesPage() {
   });
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold">Devices</h1>
@@ -218,7 +218,7 @@ function AdminDevicesPage() {
         </div>
       ) : (
         <div className="rounded-lg border bg-background overflow-hidden">
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto"><table className="w-full text-sm">
             <thead className="bg-secondary/50">
               <tr>
                 {["Name", "Status", "Room", "Last Seen", "Actions"].map((h) => (
@@ -278,7 +278,7 @@ function AdminDevicesPage() {
                 );
               })}
             </tbody>
-          </table>
+          </table></div>
         </div>
       )}
 

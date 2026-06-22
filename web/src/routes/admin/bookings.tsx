@@ -87,7 +87,7 @@ function AdminBookingsPage() {
     bookings.filter((b) => !s || (s as string[]).includes(b.status)).length;
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-900">Bookings</h1>
         <p className="text-muted-foreground text-sm mt-0.5">Review and manage all room booking requests</p>
@@ -128,7 +128,7 @@ function AdminBookingsPage() {
             <p className="text-sm font-medium">No bookings found</p>
           </div>
         ) : (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto"><table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-50 border-b">
                 {["Room", "User", "Date & Time", "Purpose", "Attendees", "Status", "Actions"].map((h) => (
@@ -202,7 +202,7 @@ function AdminBookingsPage() {
                 );
               })}
             </tbody>
-          </table>
+          </table></div>
         )}
       </div>
 
