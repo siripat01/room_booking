@@ -1,5 +1,5 @@
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCurrentUser } from "../lib/useCurrentUser";
 import { roomQuery, sessionQuery } from "../lib/queries";
@@ -75,10 +75,36 @@ function RoomDetailPage() {
   const today = new Date().toISOString().split("T")[0];
   const [form, setForm] = useState({
     date: today,
-    slot: "09:00" as string,
+    slot: "" as string,
     attendees: "1",
     purpose: "",
   });
+
+  const { data: availability } = useQuery({
+    queryKey: ["availability", roomId, form.date],
+    queryFn: async () => {
+      const res = await fetch(`/api/rooms/${roomId}/availability?date=${form.date}`);
+      if (!res.ok) return null;
+      return res.json() as Promise<{ bookings: Array<{ startTime: string; endTime: string }> }>;
+    },
+    staleTime: 30_000,
+  });
+
+  const bookedSlots = new Set<string>(
+    SLOTS.filter((s) => {
+      if (!availability?.bookings?.length) return false;
+      const slotStart = new Date(`${form.date}T${s.start}:00`);
+      const slotEnd = new Date(`${form.date}T${s.end}:00`);
+      return availability.bookings.some((b) => new Date(b.startTime) < slotEnd && new Date(b.endTime) > slotStart);
+    }).map((s) => s.start),
+  );
+
+  // Clear selected slot if it becomes booked (e.g. date changed or someone else books it)
+  useEffect(() => {
+    if (form.slot && bookedSlots.has(form.slot)) {
+      setForm((f) => ({ ...f, slot: "" }));
+    }
+  }, [form.date, availability]);
 
   const bookMutation = useMutation({
     mutationFn: async () => {
@@ -274,7 +300,7 @@ function RoomDetailPage() {
                         <CalendarDays className="w-3.5 h-3.5 text-blue-600" /> Date
                       </Label>
                       <Input id="date" type="date" min={today} value={form.date}
-                        onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} required
+                        onChange={(e) => setForm((f) => ({ ...f, date: e.target.value, slot: "" }))} required
                         className="border-slate-200" />
                     </div>
 
@@ -283,21 +309,32 @@ function RoomDetailPage() {
                         <Clock className="w-3.5 h-3.5 text-blue-600" /> Time Slot
                       </Label>
                       <div className="grid grid-cols-2 gap-2">
-                        {SLOTS.map((s) => (
-                          <button
-                            key={s.start}
-                            type="button"
-                            onClick={() => setForm((f) => ({ ...f, slot: s.start }))}
-                            className={`px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
-                              form.slot === s.start
-                                ? "bg-blue-600 text-white border-blue-600"
-                                : "border-slate-200 hover:border-blue-300 hover:bg-blue-50 text-slate-700"
-                            }`}
-                          >
-                            {s.start}–{s.end}
-                          </button>
-                        ))}
+                        {SLOTS.map((s) => {
+                          const booked = bookedSlots.has(s.start);
+                          const selected = form.slot === s.start;
+                          return (
+                            <button
+                              key={s.start}
+                              type="button"
+                              disabled={booked}
+                              onClick={() => setForm((f) => ({ ...f, slot: s.start }))}
+                              className={`px-3 py-2 rounded-lg border text-sm font-medium transition-colors text-left ${
+                                booked
+                                  ? "border-red-200 bg-red-50 text-red-400 cursor-not-allowed"
+                                  : selected
+                                  ? "bg-blue-600 text-white border-blue-600"
+                                  : "border-slate-200 hover:border-blue-300 hover:bg-blue-50 text-slate-700"
+                              }`}
+                            >
+                              <div>{s.start}–{s.end}</div>
+                              {booked && <div className="text-xs font-normal mt-0.5 text-red-400">จองแล้ว</div>}
+                            </button>
+                          );
+                        })}
                       </div>
+                      {!form.slot && (
+                        <p className="text-xs text-muted-foreground">เลือกช่วงเวลาที่ต้องการ</p>
+                      )}
                     </div>
 
                     <div className="space-y-1.5">
