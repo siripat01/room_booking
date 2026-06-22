@@ -10,12 +10,14 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ProfileRouteImport } from './routes/profile'
+import { Route as PairRouteImport } from './routes/pair'
 import { Route as HomeRouteImport } from './routes/home'
 import { Route as BookingsRouteImport } from './routes/bookings'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as RoomsRoomIdRouteImport } from './routes/rooms.$roomId'
+import { Route as KioskDeviceIdRouteImport } from './routes/kiosk.$deviceId'
 import { Route as AdminUsersRouteImport } from './routes/admin/users'
 import { Route as AdminRoomsRouteImport } from './routes/admin/rooms'
 import { Route as AdminDevicesRouteImport } from './routes/admin/devices'
@@ -24,6 +26,11 @@ import { Route as AdminBookingsRouteImport } from './routes/admin/bookings'
 const ProfileRoute = ProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PairRoute = PairRouteImport.update({
+  id: '/pair',
+  path: '/pair',
   getParentRoute: () => rootRouteImport,
 } as any)
 const HomeRoute = HomeRouteImport.update({
@@ -56,6 +63,11 @@ const RoomsRoomIdRoute = RoomsRoomIdRouteImport.update({
   path: '/rooms/$roomId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const KioskDeviceIdRoute = KioskDeviceIdRouteImport.update({
+  id: '/kiosk/$deviceId',
+  path: '/kiosk/$deviceId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AdminUsersRoute = AdminUsersRouteImport.update({
   id: '/users',
   path: '/users',
@@ -82,11 +94,13 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRouteWithChildren
   '/bookings': typeof BookingsRoute
   '/home': typeof HomeRoute
+  '/pair': typeof PairRoute
   '/profile': typeof ProfileRoute
   '/admin/bookings': typeof AdminBookingsRoute
   '/admin/devices': typeof AdminDevicesRoute
   '/admin/rooms': typeof AdminRoomsRoute
   '/admin/users': typeof AdminUsersRoute
+  '/kiosk/$deviceId': typeof KioskDeviceIdRoute
   '/rooms/$roomId': typeof RoomsRoomIdRoute
   '/admin/': typeof AdminIndexRoute
 }
@@ -94,11 +108,13 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/bookings': typeof BookingsRoute
   '/home': typeof HomeRoute
+  '/pair': typeof PairRoute
   '/profile': typeof ProfileRoute
   '/admin/bookings': typeof AdminBookingsRoute
   '/admin/devices': typeof AdminDevicesRoute
   '/admin/rooms': typeof AdminRoomsRoute
   '/admin/users': typeof AdminUsersRoute
+  '/kiosk/$deviceId': typeof KioskDeviceIdRoute
   '/rooms/$roomId': typeof RoomsRoomIdRoute
   '/admin': typeof AdminIndexRoute
 }
@@ -108,11 +124,13 @@ export interface FileRoutesById {
   '/admin': typeof AdminRouteWithChildren
   '/bookings': typeof BookingsRoute
   '/home': typeof HomeRoute
+  '/pair': typeof PairRoute
   '/profile': typeof ProfileRoute
   '/admin/bookings': typeof AdminBookingsRoute
   '/admin/devices': typeof AdminDevicesRoute
   '/admin/rooms': typeof AdminRoomsRoute
   '/admin/users': typeof AdminUsersRoute
+  '/kiosk/$deviceId': typeof KioskDeviceIdRoute
   '/rooms/$roomId': typeof RoomsRoomIdRoute
   '/admin/': typeof AdminIndexRoute
 }
@@ -123,11 +141,13 @@ export interface FileRouteTypes {
     | '/admin'
     | '/bookings'
     | '/home'
+    | '/pair'
     | '/profile'
     | '/admin/bookings'
     | '/admin/devices'
     | '/admin/rooms'
     | '/admin/users'
+    | '/kiosk/$deviceId'
     | '/rooms/$roomId'
     | '/admin/'
   fileRoutesByTo: FileRoutesByTo
@@ -135,11 +155,13 @@ export interface FileRouteTypes {
     | '/'
     | '/bookings'
     | '/home'
+    | '/pair'
     | '/profile'
     | '/admin/bookings'
     | '/admin/devices'
     | '/admin/rooms'
     | '/admin/users'
+    | '/kiosk/$deviceId'
     | '/rooms/$roomId'
     | '/admin'
   id:
@@ -148,11 +170,13 @@ export interface FileRouteTypes {
     | '/admin'
     | '/bookings'
     | '/home'
+    | '/pair'
     | '/profile'
     | '/admin/bookings'
     | '/admin/devices'
     | '/admin/rooms'
     | '/admin/users'
+    | '/kiosk/$deviceId'
     | '/rooms/$roomId'
     | '/admin/'
   fileRoutesById: FileRoutesById
@@ -162,7 +186,9 @@ export interface RootRouteChildren {
   AdminRoute: typeof AdminRouteWithChildren
   BookingsRoute: typeof BookingsRoute
   HomeRoute: typeof HomeRoute
+  PairRoute: typeof PairRoute
   ProfileRoute: typeof ProfileRoute
+  KioskDeviceIdRoute: typeof KioskDeviceIdRoute
   RoomsRoomIdRoute: typeof RoomsRoomIdRoute
 }
 
@@ -173,6 +199,13 @@ declare module '@tanstack/react-router' {
       path: '/profile'
       fullPath: '/profile'
       preLoaderRoute: typeof ProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pair': {
+      id: '/pair'
+      path: '/pair'
+      fullPath: '/pair'
+      preLoaderRoute: typeof PairRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/home': {
@@ -215,6 +248,13 @@ declare module '@tanstack/react-router' {
       path: '/rooms/$roomId'
       fullPath: '/rooms/$roomId'
       preLoaderRoute: typeof RoomsRoomIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/kiosk/$deviceId': {
+      id: '/kiosk/$deviceId'
+      path: '/kiosk/$deviceId'
+      fullPath: '/kiosk/$deviceId'
+      preLoaderRoute: typeof KioskDeviceIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/users': {
@@ -271,7 +311,9 @@ const rootRouteChildren: RootRouteChildren = {
   AdminRoute: AdminRouteWithChildren,
   BookingsRoute: BookingsRoute,
   HomeRoute: HomeRoute,
+  PairRoute: PairRoute,
   ProfileRoute: ProfileRoute,
+  KioskDeviceIdRoute: KioskDeviceIdRoute,
   RoomsRoomIdRoute: RoomsRoomIdRoute,
 }
 export const routeTree = rootRouteImport

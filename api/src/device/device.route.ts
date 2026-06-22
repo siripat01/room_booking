@@ -46,6 +46,23 @@ export const deviceRoutes = new Elysia()
         return await deviceService.deleteDevice(id);
     }, { auth: true })
 
+    // ── Pairing ───────────────────────────────────────────────────────────────
+    .post("/devices/:id/generate-pairing", async ({ user, params: { id }, status }) => {
+        if (user.role !== "adminRole") return status(403);
+        return await deviceService.generatePairingCode(id);
+    }, { auth: true })
+
+    .post("/devices/pair", async ({ body, status }) => {
+        try {
+            return await deviceService.pairDevice(body.code);
+        } catch (e: any) {
+            return status(400, { error: e.message });
+        }
+    }, {
+        auth: false,
+        body: t.Object({ code: t.String() }),
+    })
+
     // ── Kiosk self-service (deviceKey auth) ───────────────────────────────────
     .get("/devices/:id/status", async ({ params: { id }, headers, status }) => {
         const deviceKey = headers["x-device-key"];

@@ -152,6 +152,37 @@ export class DeviceService {
         return { device, bookings };
     }
 
+    async generatePairingCode(deviceId: string): Promise<{ code: string; expiresAt: Date }> {
+        const device = await this.prisma.device.findUnique({ where: { id: deviceId } });
+        if (!device) throw new Error("Device not found");
+
+        const code = Math.floor(100000 + Math.random() * 900000).toString();
+        const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+        await this.prisma.verification.create({
+            data: {
+                id: randomBytes(16).toString("hex"),
+                identifier: `pairing:${code}`,
+                value: `${deviceId}|${device.deviceKey}`,
+                expiresAt,
+            },
+        });
+
+        return { code, expiresAt };
+    }
+
+    async pairDevice(code: string): Promise<{ deviceId: string; deviceKey: string }> {
+        const verification = await this.prisma.verification.findFirst({
+            where: { identifier: `pairing:${code}`, expiresAt: { gt: new Date() } },
+        });
+        if (!verification) throw new Error("Invalid or expired pairing code");
+
+        await this.prisma.verification.delete({ where: { id: verification.id } });
+
+        const [deviceId, deviceKey] = verification.value.split("|");
+        return { deviceId, deviceKey };
+    }
+
     async scanQr(id: string, qrToken: string) {
         const device = await this.prisma.device.findUnique({ where: { id } });
         if (!device) throw new Error("Device not found");
