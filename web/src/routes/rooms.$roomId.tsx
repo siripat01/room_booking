@@ -90,6 +90,8 @@ function RoomDetailPage() {
     staleTime: 30_000,
   });
 
+  const now = new Date();
+
   const bookedSlots = new Set<string>(
     SLOTS.filter((s) => {
       if (!availability?.bookings?.length) return false;
@@ -99,9 +101,13 @@ function RoomDetailPage() {
     }).map((s) => s.start),
   );
 
-  // Clear selected slot if it becomes booked (e.g. date changed or someone else books it)
+  const pastSlots = new Set<string>(
+    SLOTS.filter((s) => new Date(`${form.date}T${s.start}:00`) < now).map((s) => s.start),
+  );
+
+  // Clear selected slot if it becomes unavailable (e.g. date changed or someone else books it)
   useEffect(() => {
-    if (form.slot && bookedSlots.has(form.slot)) {
+    if (form.slot && (bookedSlots.has(form.slot) || pastSlots.has(form.slot))) {
       setForm((f) => ({ ...f, slot: "" }));
     }
   }, [form.date, availability]);
@@ -135,6 +141,7 @@ function RoomDetailPage() {
   function handleBooking(e: React.FormEvent) {
     e.preventDefault();
     if (!form.slot) { toast.error("Please select a time slot."); return; }
+    if (pastSlots.has(form.slot)) { toast.error("Cannot book a time slot in the past."); return; }
     if (!form.purpose.trim()) { toast.error("Please enter a purpose."); return; }
     bookMutation.mutate();
   }
@@ -311,16 +318,20 @@ function RoomDetailPage() {
                       <div className="grid grid-cols-2 gap-2">
                         {SLOTS.map((s) => {
                           const booked = bookedSlots.has(s.start);
+                          const past = pastSlots.has(s.start);
+                          const unavailable = booked || past;
                           const selected = form.slot === s.start;
                           return (
                             <button
                               key={s.start}
                               type="button"
-                              disabled={booked}
+                              disabled={unavailable}
                               onClick={() => setForm((f) => ({ ...f, slot: s.start }))}
                               className={`px-3 py-2 rounded-lg border text-sm font-medium transition-colors text-left ${
                                 booked
                                   ? "border-red-200 bg-red-50 text-red-400 cursor-not-allowed"
+                                  : past
+                                  ? "border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed"
                                   : selected
                                   ? "bg-blue-600 text-white border-blue-600"
                                   : "border-slate-200 hover:border-blue-300 hover:bg-blue-50 text-slate-700"
@@ -328,6 +339,7 @@ function RoomDetailPage() {
                             >
                               <div>{s.start}–{s.end}</div>
                               {booked && <div className="text-xs font-normal mt-0.5 text-red-400">จองแล้ว</div>}
+                              {past && !booked && <div className="text-xs font-normal mt-0.5 text-slate-400">ผ่านไปแล้ว</div>}
                             </button>
                           );
                         })}
