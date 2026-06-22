@@ -210,8 +210,10 @@ function BookingCard({
   const cfg = STATUS_CONFIG[booking.status];
   const start = new Date(booking.startTime);
   const end = new Date(booking.endTime);
-  const canCancel = ["PENDING", "CONFIRMED"].includes(booking.status);
-  const canShowQR = booking.status === "CONFIRMED";
+  const now = new Date();
+  const isPast = new Date(booking.endTime) < now;
+  const canCancel = ["PENDING", "CONFIRMED"].includes(booking.status) && !isPast;
+  const canShowQR = booking.status === "CONFIRMED" && !isPast;
 
   const formatDate = (d: Date) =>
     d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
