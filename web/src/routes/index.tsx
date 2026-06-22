@@ -9,9 +9,20 @@ import { Building2, CalendarDays, CheckCircle2, Users } from "lucide-react";
 export const Route = createFileRoute("/")({
   beforeLoad: async ({ context: { queryClient }, search }) => {
     if (typeof window === "undefined") return;
+
+    // Fast path: localStorage hint set when session was last confirmed valid.
+    // Avoids a round-trip API call on repeat visits.
+    if (localStorage.getItem("rb_authed") === "1") {
+      throw redirect({ to: (search as any).redirect ?? "/home" });
+    }
+
+    // Slow path: verify with the server
     try {
       const user = await queryClient.ensureQueryData(sessionQuery());
-      if (user) throw redirect({ to: (search as any).redirect ?? "/home" });
+      if (user) {
+        localStorage.setItem("rb_authed", "1");
+        throw redirect({ to: (search as any).redirect ?? "/home" });
+      }
     } catch (e: any) {
       if (e?.isRedirect) throw e;
     }

@@ -27,6 +27,7 @@ export function Navbar({ user }: NavbarProps) {
 
   async function handleSignOut() {
     await authClient.signOut();
+    localStorage.removeItem("rb_authed");
     toast.success("Signed out successfully");
     router.navigate({ to: "/" });
   }
