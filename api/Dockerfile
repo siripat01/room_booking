@@ -43,5 +43,4 @@ COPY --from=builder /app/prisma.config.ts ./
 
 EXPOSE 3000
 
-# Run migrations then start the server
-CMD ["sh", "-c", "bun node_modules/.bin/prisma migrate deploy && bun src/index.ts"]
+CMD ["bun", "src/index.ts"]
