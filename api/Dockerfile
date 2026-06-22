@@ -40,6 +40,7 @@ COPY --from=builder /app/tsconfig.json ./
 COPY --from=builder /app/libs ./libs
 COPY --from=builder /app/utils ./utils
 COPY --from=builder /app/prisma.config.ts ./
+COPY --from=builder /app/migrate.ts ./
 
 EXPOSE 3000
 

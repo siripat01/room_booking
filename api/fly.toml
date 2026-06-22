@@ -10,7 +10,7 @@ primary_region = 'sin'
   dockerfile = 'Dockerfile'
 
 [deploy]
-  release_command = "bun node_modules/.bin/prisma migrate deploy"
+  release_command = "bun run migrate"
 
 [env]
   BUN_ENV = 'production'
