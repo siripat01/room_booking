@@ -87,7 +87,10 @@ export class BookingService {
 
     // forSelf=true forces filtering by current user regardless of role (used by My Bookings page)
     const where: any = (isAdmin && !params?.forSelf) ? {} : { userId };
-    if (params?.status) where.status = params.status;
+    if (params?.status) {
+      const statuses = params.status.split(",").map((s) => s.trim()).filter(Boolean);
+      where.status = statuses.length === 1 ? statuses[0] : { in: statuses };
+    }
     if (params?.roomId) where.roomId = params.roomId;
     if (isAdmin && params?.userId) where.userId = params.userId;
     if (params?.date) {

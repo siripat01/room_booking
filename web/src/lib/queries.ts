@@ -90,7 +90,7 @@ export const adminBookingsQuery = (params?: { status?: string; page?: number }) 
       query: {
         status: params?.status,
         page: params?.page?.toString(),
-        limit: "50",
+        limit: "30",
       },
     });
     if (error) throw error;
@@ -98,11 +98,11 @@ export const adminBookingsQuery = (params?: { status?: string; page?: number }) 
   },
 });
 
-export const adminUsersQuery = (params?: { search?: string; role?: string }) => ({
+export const adminUsersQuery = (params?: { search?: string; role?: string; page?: number }) => ({
   queryKey: ["admin", "users", params],
   queryFn: async () => {
     const { data, error } = await (app.api.users as any).get({
-      query: { search: params?.search, role: params?.role },
+      query: { search: params?.search, role: params?.role, page: params?.page?.toString(), limit: "20" },
     });
     if (error) throw error;
     return data as UserListResponse;

@@ -11,7 +11,7 @@ import { Textarea } from "../../components/ui/textarea";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "../../components/ui/dialog";
-import { CalendarDays, Clock, Users, CheckCircle2, XCircle, Loader2, Search } from "lucide-react";
+import { CalendarDays, Clock, Users, CheckCircle2, XCircle, Loader2, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/bookings")({
@@ -32,23 +32,30 @@ const STATUS_CONFIG: Record<BookingStatus, { label: string; variant: any; cls: s
   EXPIRED:    { label: "Expired",    variant: "outline",     cls: "" },
 };
 
-const TABS: { label: string; statuses: BookingStatus[] | null }[] = [
-  { label: "All",       statuses: null },
-  { label: "Pending",   statuses: ["PENDING"] },
-  { label: "Confirmed", statuses: ["CONFIRMED", "CHECKED_IN"] },
-  { label: "Done",      statuses: ["COMPLETED", "EXPIRED"] },
-  { label: "Cancelled", statuses: ["CANCELLED", "REJECTED"] },
+const TABS: { label: string; statusQuery?: string }[] = [
+  { label: "All",       statusQuery: undefined },
+  { label: "Pending",   statusQuery: "PENDING" },
+  { label: "Confirmed", statusQuery: "CONFIRMED,CHECKED_IN" },
+  { label: "Done",      statusQuery: "COMPLETED,EXPIRED" },
+  { label: "Cancelled", statusQuery: "CANCELLED,REJECTED" },
 ];
+
+const LIMIT = 30;
 
 function AdminBookingsPage() {
   const qc = useQueryClient();
   const [tab, setTab] = useState(0);
+  const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [rejectTarget, setRejectTarget] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
 
-  const { data, isLoading: loading } = useQuery(adminBookingsQuery());
+  const { data, isLoading: loading } = useQuery(
+    adminBookingsQuery({ status: TABS[tab].statusQuery, page }),
+  );
   const bookings: Booking[] = (data as any)?.bookings ?? [];
+  const total: number = (data as any)?.total ?? 0;
+  const totalPages: number = (data as any)?.totalPages ?? 1;
 
   const approveMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -73,18 +80,21 @@ function AdminBookingsPage() {
     onError: () => toast.error("Failed to reject"),
   });
 
-  const activeStatuses = TABS[tab].statuses;
-  const displayed = bookings
-    .filter((b) => !activeStatuses || (activeStatuses as string[]).includes(b.status))
-    .filter((b) => {
-      if (!search) return true;
-      const q = search.toLowerCase();
-      return b.room?.name?.toLowerCase().includes(q) || b.user?.name?.toLowerCase().includes(q) ||
-        b.user?.email?.toLowerCase().includes(q) || b.purpose?.toLowerCase().includes(q);
-    });
+  const displayed = search
+    ? bookings.filter((b) => {
+        const q = search.toLowerCase();
+        return b.room?.name?.toLowerCase().includes(q) || b.user?.name?.toLowerCase().includes(q) ||
+          b.user?.email?.toLowerCase().includes(q) || b.purpose?.toLowerCase().includes(q);
+      })
+    : bookings;
 
-  const tabCount = (s: BookingStatus[] | null) =>
-    bookings.filter((b) => !s || (s as string[]).includes(b.status)).length;
+  function switchTab(i: number) {
+    setTab(i);
+    setPage(1);
+  }
+
+  const from = total === 0 ? 0 : (page - 1) * LIMIT + 1;
+  const to = Math.min(page * LIMIT, total);
 
   return (
     <div className="p-4 sm:p-8">
@@ -102,17 +112,19 @@ function AdminBookingsPage() {
               onChange={(e) => setSearch(e.target.value)} className="pl-9 border-slate-200 bg-slate-50" />
           </div>
           <div className="flex gap-0">
-            {TABS.map(({ label, statuses }, i) => (
-              <button key={label} onClick={() => setTab(i)}
+            {TABS.map(({ label }, i) => (
+              <button key={label} onClick={() => switchTab(i)}
                 className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
                   tab === i
                     ? "border-blue-600 text-blue-700"
                     : "border-transparent text-muted-foreground hover:text-slate-700"
                 }`}>
                 {label}
-                <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-xs ${
-                  tab === i ? "bg-blue-100 text-blue-700" : "bg-slate-100"
-                }`}>{tabCount(statuses)}</span>
+                {tab === i && total > 0 && (
+                  <span className="ml-1.5 rounded-full px-1.5 py-0.5 text-xs bg-blue-100 text-blue-700">
+                    {total}
+                  </span>
+                )}
               </button>
             ))}
           </div>
@@ -203,6 +215,26 @@ function AdminBookingsPage() {
               })}
             </tbody>
           </table></div>
+        )}
+
+        {/* Pagination */}
+        {!loading && totalPages > 1 && (
+          <div className="flex items-center justify-between px-5 py-3 border-t text-sm">
+            <span className="text-muted-foreground text-xs">
+              {from}–{to} จาก {total} รายการ
+            </span>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" className="h-7 px-2"
+                onClick={() => setPage((p) => p - 1)} disabled={page <= 1}>
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              <span className="text-xs text-muted-foreground tabular-nums">หน้า {page}/{totalPages}</span>
+              <Button variant="outline" size="sm" className="h-7 px-2"
+                onClick={() => setPage((p) => p + 1)} disabled={page >= totalPages}>
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
         )}
       </div>
 

@@ -1,8 +1,8 @@
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCurrentUser } from "../lib/useCurrentUser";
-import { bookingsQuery, sessionQuery, type BookingStatus, type Booking } from "../lib/queries";
+import { sessionQuery, type BookingStatus, type Booking, type BookingListResponse } from "../lib/queries";
 import { app } from "../lib/api";
 import { Navbar } from "../components/Navbar";
 import { Badge } from "../components/ui/badge";
@@ -25,10 +25,6 @@ export const Route = createFileRoute("/bookings")({
       if (e?.isRedirect) throw e;
       throw redirect({ to: "/", search: { redirect: location.pathname } });
     }
-  },
-  loader: ({ context: { queryClient } }) => {
-    if (typeof window === "undefined") return;
-    return queryClient.ensureQueryData(bookingsQuery());
   },
   component: BookingsPage,
 });
@@ -64,8 +60,28 @@ function BookingsPage() {
   const [activeTab, setActiveTab] = useState(0);
   const [qrState, setQrState] = useState<QRState>(null);
 
-  const { data, isLoading: loading } = useQuery(bookingsQuery());
-  const bookings: Booking[] = (data as any)?.bookings ?? [];
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading: loading,
+  } = useInfiniteQuery({
+    queryKey: ["bookings", "list"],
+    initialPageParam: 1,
+    queryFn: async ({ pageParam }) => {
+      const { data, error } = await (app.api.bookings as any).get({
+        query: { page: String(pageParam), limit: "20", forSelf: "true" },
+      });
+      if (error) throw error;
+      return data as BookingListResponse;
+    },
+    getNextPageParam: (lastPage: BookingListResponse) =>
+      lastPage.page < lastPage.totalPages ? lastPage.page + 1 : undefined,
+  });
+
+  const bookings: Booking[] = data?.pages.flatMap((p) => p.bookings) ?? [];
+  const total = data?.pages[0]?.total ?? 0;
 
   const cancelMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -73,7 +89,7 @@ function BookingsPage() {
       if (error) throw error;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["bookings"] });
+      qc.invalidateQueries({ queryKey: ["bookings", "list"] });
       toast.success("Booking cancelled.");
     },
     onError: () => toast.error("Could not cancel booking."),
@@ -163,6 +179,27 @@ function BookingsPage() {
                 qrLoading={qrMutation.isPending && qrMutation.variables?.id === booking.id}
               />
             ))}
+
+            {/* Load More */}
+            {hasNextPage && (
+              <Button
+                variant="outline"
+                className="w-full mt-2"
+                onClick={() => fetchNextPage()}
+                disabled={isFetchingNextPage}
+              >
+                {isFetchingNextPage
+                  ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />กำลังโหลด…</>
+                  : "โหลดเพิ่ม"}
+              </Button>
+            )}
+
+            {/* Count info */}
+            {total > 0 && (
+              <p className="text-xs text-center text-muted-foreground pt-1">
+                แสดง {bookings.length} จาก {total} รายการ
+              </p>
+            )}
           </div>
         )}
       </main>
@@ -210,10 +247,8 @@ function BookingCard({
   const cfg = STATUS_CONFIG[booking.status];
   const start = new Date(booking.startTime);
   const end = new Date(booking.endTime);
-  const now = new Date();
-  const isPast = new Date(booking.endTime) < now;
-  const canCancel = ["PENDING", "CONFIRMED"].includes(booking.status) && !isPast;
-  const canShowQR = booking.status === "CONFIRMED" && !isPast;
+  const canCancel = ["PENDING", "CONFIRMED"].includes(booking.status);
+  const canShowQR = booking.status === "CONFIRMED";
 
   const formatDate = (d: Date) =>
     d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
