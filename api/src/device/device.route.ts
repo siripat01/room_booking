@@ -87,7 +87,11 @@ export const deviceRoutes = new Elysia()
         if (!deviceKey) return status(401);
         const device = await prisma.device.findFirst({ where: { id, deviceKey } });
         if (!device) return status(403);
-        return await deviceService.scanQr(id, body.qrToken);
+        try {
+            return await deviceService.scanQr(id, body.qrToken);
+        } catch (e: any) {
+            return status(400, { message: e.message });
+        }
     }, {
         auth: false,
         body: t.Object({ qrToken: t.String() }),

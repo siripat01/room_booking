@@ -200,6 +200,11 @@ export class DeviceService {
         if (!booking.qrExpiresAt || booking.qrExpiresAt < new Date()) throw new Error("QR token has expired");
         if (device.roomId && booking.roomId !== device.roomId) throw new Error("QR code is for a different room");
 
+        const now = new Date();
+        const checkInOpens = new Date(booking.startTime.getTime() - 10 * 60 * 1000);
+        if (now < checkInOpens) throw new Error("Too early to check in — opens 10 minutes before start");
+        if (now > booking.startTime) throw new Error("Check-in window has passed");
+
         return this.prisma.booking.update({
             where: { id: booking.id },
             data: { status: "CHECKED_IN", checkedInAt: new Date(), qrToken: null, qrExpiresAt: null },

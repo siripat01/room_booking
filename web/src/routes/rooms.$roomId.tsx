@@ -36,6 +36,17 @@ export const Route = createFileRoute("/rooms/$roomId")({
   component: RoomDetailPage,
 });
 
+const SLOTS = [
+  { start: "08:00", end: "09:00" },
+  { start: "09:00", end: "10:00" },
+  { start: "10:00", end: "11:00" },
+  { start: "11:00", end: "12:00" },
+  { start: "12:00", end: "13:00" },
+  { start: "13:00", end: "14:00" },
+  { start: "14:00", end: "15:00" },
+  { start: "15:00", end: "16:00" },
+] as const;
+
 const AMENITY_ICONS: Record<string, React.ReactNode> = {
   projector: <Monitor className="w-4 h-4" />,
   whiteboard: <PenSquare className="w-4 h-4" />,
@@ -64,16 +75,16 @@ function RoomDetailPage() {
   const today = new Date().toISOString().split("T")[0];
   const [form, setForm] = useState({
     date: today,
-    startTime: "09:00",
-    endTime: "10:00",
+    slot: "09:00" as string,
     attendees: "1",
     purpose: "",
   });
 
   const bookMutation = useMutation({
     mutationFn: async () => {
-      const startTime = new Date(`${form.date}T${form.startTime}:00`).toISOString();
-      const endTime = new Date(`${form.date}T${form.endTime}:00`).toISOString();
+      const slot = SLOTS.find((s) => s.start === form.slot)!;
+      const startTime = new Date(`${form.date}T${slot.start}:00`).toISOString();
+      const endTime = new Date(`${form.date}T${slot.end}:00`).toISOString();
       const { data, error } = await (app.api.bookings as any).post({
         roomId,
         startTime,
@@ -97,8 +108,8 @@ function RoomDetailPage() {
 
   function handleBooking(e: React.FormEvent) {
     e.preventDefault();
+    if (!form.slot) { toast.error("Please select a time slot."); return; }
     if (!form.purpose.trim()) { toast.error("Please enter a purpose."); return; }
-    if (form.startTime >= form.endTime) { toast.error("End time must be after start time."); return; }
     bookMutation.mutate();
   }
 
@@ -267,20 +278,25 @@ function RoomDetailPage() {
                         className="border-slate-200" />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1.5">
-                        <Label htmlFor="startTime" className="text-sm font-medium flex items-center gap-1.5">
-                          <Clock className="w-3.5 h-3.5 text-blue-600" /> Start
-                        </Label>
-                        <Input id="startTime" type="time" value={form.startTime}
-                          onChange={(e) => setForm((f) => ({ ...f, startTime: e.target.value }))} required
-                          className="border-slate-200" />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label htmlFor="endTime" className="text-sm font-medium">End</Label>
-                        <Input id="endTime" type="time" value={form.endTime}
-                          onChange={(e) => setForm((f) => ({ ...f, endTime: e.target.value }))} required
-                          className="border-slate-200" />
+                    <div className="space-y-1.5">
+                      <Label className="text-sm font-medium flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-blue-600" /> Time Slot
+                      </Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {SLOTS.map((s) => (
+                          <button
+                            key={s.start}
+                            type="button"
+                            onClick={() => setForm((f) => ({ ...f, slot: s.start }))}
+                            className={`px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                              form.slot === s.start
+                                ? "bg-blue-600 text-white border-blue-600"
+                                : "border-slate-200 hover:border-blue-300 hover:bg-blue-50 text-slate-700"
+                            }`}
+                          >
+                            {s.start}–{s.end}
+                          </button>
+                        ))}
                       </div>
                     </div>
 
