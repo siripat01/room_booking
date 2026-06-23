@@ -13,6 +13,7 @@ import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as PairRouteImport } from './routes/pair'
 import { Route as HomeRouteImport } from './routes/home'
 import { Route as BookingsRouteImport } from './routes/bookings'
+import { Route as AuthErrorRouteImport } from './routes/auth-error'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
@@ -41,6 +42,11 @@ const HomeRoute = HomeRouteImport.update({
 const BookingsRoute = BookingsRouteImport.update({
   id: '/bookings',
   path: '/bookings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthErrorRoute = AuthErrorRouteImport.update({
+  id: '/auth-error',
+  path: '/auth-error',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminRoute = AdminRouteImport.update({
@@ -92,6 +98,7 @@ const AdminBookingsRoute = AdminBookingsRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
+  '/auth-error': typeof AuthErrorRoute
   '/bookings': typeof BookingsRoute
   '/home': typeof HomeRoute
   '/pair': typeof PairRoute
@@ -106,6 +113,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/auth-error': typeof AuthErrorRoute
   '/bookings': typeof BookingsRoute
   '/home': typeof HomeRoute
   '/pair': typeof PairRoute
@@ -122,6 +130,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
+  '/auth-error': typeof AuthErrorRoute
   '/bookings': typeof BookingsRoute
   '/home': typeof HomeRoute
   '/pair': typeof PairRoute
@@ -139,6 +148,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/admin'
+    | '/auth-error'
     | '/bookings'
     | '/home'
     | '/pair'
@@ -153,6 +163,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/auth-error'
     | '/bookings'
     | '/home'
     | '/pair'
@@ -168,6 +179,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/admin'
+    | '/auth-error'
     | '/bookings'
     | '/home'
     | '/pair'
@@ -184,6 +196,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRouteWithChildren
+  AuthErrorRoute: typeof AuthErrorRoute
   BookingsRoute: typeof BookingsRoute
   HomeRoute: typeof HomeRoute
   PairRoute: typeof PairRoute
@@ -220,6 +233,13 @@ declare module '@tanstack/react-router' {
       path: '/bookings'
       fullPath: '/bookings'
       preLoaderRoute: typeof BookingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth-error': {
+      id: '/auth-error'
+      path: '/auth-error'
+      fullPath: '/auth-error'
+      preLoaderRoute: typeof AuthErrorRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin': {
@@ -309,6 +329,7 @@ const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRouteWithChildren,
+  AuthErrorRoute: AuthErrorRoute,
   BookingsRoute: BookingsRoute,
   HomeRoute: HomeRoute,
   PairRoute: PairRoute,

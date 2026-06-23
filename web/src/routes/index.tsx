@@ -53,6 +53,7 @@ function LoginPage() {
       await authClient.signIn.social({
         provider: "google",
         callbackURL,
+        errorCallbackURL: `${import.meta.env.VITE_FRONTEND_URL}/auth-error?reason=domain`,
       });
     } catch {
       toast.error("Login failed. Please try again.");
