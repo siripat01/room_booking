@@ -1,4 +1,5 @@
 import "../index.css";
+import type React from "react";
 import { Outlet, createRootRouteWithContext, redirect } from "@tanstack/react-router";
 import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
 import { Toaster } from "sonner";
@@ -7,6 +8,15 @@ import { sessionQuery } from "../lib/queries";
 
 interface RouterContext {
   queryClient: QueryClient;
+}
+
+function Providers({ queryClient, children }: { queryClient: QueryClient; children: React.ReactNode }) {
+  return (
+    <QueryClientProvider client={queryClient}>
+      {children}
+      <Toaster richColors position="top-right" />
+    </QueryClientProvider>
+  );
 }
 
 export const Route = createRootRouteWithContext<RouterContext>()({
@@ -24,18 +34,26 @@ export const Route = createRootRouteWithContext<RouterContext>()({
     }
   },
   component: RootComponent,
-  notFoundComponent: () => <ErrorPage type="not-found" />,
-  errorComponent: ({ error }) => (
-    <ErrorPage type="server" description={(error as Error)?.message || undefined} />
-  ),
+  notFoundComponent: () => {
+    const { queryClient } = Route.useRouteContext();
+    return <Providers queryClient={queryClient}><ErrorPage type="not-found" /></Providers>;
+  },
+  errorComponent: ({ error }) => {
+    const { queryClient } = Route.useRouteContext();
+    return (
+      <Providers queryClient={queryClient}>
+        <ErrorPage type="server" description={(error as Error)?.message || undefined} />
+      </Providers>
+    );
+  },
 });
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   return (
-    <QueryClientProvider client={queryClient}>
+    <Providers queryClient={queryClient}>
       <Outlet />
-      <Toaster richColors position="top-right" />
-    </QueryClientProvider>
+    </Providers>
   );
 }
+
