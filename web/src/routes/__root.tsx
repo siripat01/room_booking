@@ -40,9 +40,10 @@ export const Route = createRootRouteWithContext<RouterContext>()({
   },
   errorComponent: ({ error }) => {
     const { queryClient } = Route.useRouteContext();
+    const msg = error instanceof Error ? error.message : typeof error === "string" ? error : undefined;
     return (
       <Providers queryClient={queryClient}>
-        <ErrorPage type="server" description={(error as Error)?.message || undefined} />
+        <ErrorPage type="server" description={msg} />
       </Providers>
     );
   },
