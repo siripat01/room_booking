@@ -72,7 +72,7 @@ const bookingRoutes = new Elysia({ prefix: "/bookings" })
                 roomId: t.String(),
                 startTime: t.String(),
                 endTime: t.String(),
-                attendees: t.Number(),
+                attendees: t.Number({ minimum: 1, maximum: 500 }),
                 purpose: t.Optional(t.String()),
             }),
         },
@@ -101,8 +101,8 @@ const bookingRoutes = new Elysia({ prefix: "/bookings" })
     )
     .post(
         "/:id/checkin",
-        async ({ params: { id }, body }) => {
-            return bookingService.checkIn(id, body.qrToken);
+        async ({ user, params: { id }, body }) => {
+            return bookingService.checkIn(id, body.qrToken, user.id, user.role ?? "userRole");
         },
         {
             auth: true,

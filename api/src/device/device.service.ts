@@ -158,7 +158,7 @@ export class DeviceService {
         const device = await this.prisma.device.findUnique({ where: { id: deviceId } });
         if (!device) throw new Error("Device not found");
 
-        const code = Math.floor(100000 + Math.random() * 900000).toString();
+        const code = ((parseInt(randomBytes(3).toString("hex"), 16) % 900000) + 100000).toString();
         const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
         await this.prisma.verification.create({

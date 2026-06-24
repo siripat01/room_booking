@@ -168,10 +168,10 @@ function KioskPage() {
     return () => clearInterval(t);
   }, []);
 
-  // Load credentials from localStorage
+  // Load credentials from sessionStorage
   useEffect(() => {
-    const storedId = localStorage.getItem("kiosk_device_id");
-    const storedKey = localStorage.getItem("kiosk_device_key");
+    const storedId = sessionStorage.getItem("kiosk_device_id");
+    const storedKey = sessionStorage.getItem("kiosk_device_key");
     if (!storedId || !storedKey || storedId !== deviceId) {
       navigate({ to: "/pair" });
       return;
@@ -185,8 +185,8 @@ function KioskPage() {
       const [s, sc] = await Promise.all([
         kioskFetch(`/devices/${deviceId}/status`, deviceKey).then((r) => {
           if (r.status === 401 || r.status === 403) {
-            localStorage.removeItem("kiosk_device_id");
-            localStorage.removeItem("kiosk_device_key");
+            sessionStorage.removeItem("kiosk_device_id");
+            sessionStorage.removeItem("kiosk_device_key");
             navigate({ to: "/pair" });
             return null;
           }
