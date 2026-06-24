@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState, useCallback } from "react";
 import jsQR from "jsqr";
-import { RefreshCw, CheckCircle, XCircle } from "lucide-react";
+import { RefreshCw, CheckCircle, XCircle, Camera } from "lucide-react";
 
 export const Route = createFileRoute("/kiosk/$deviceId")({
   component: KioskPage,
@@ -54,7 +54,7 @@ async function kioskFetch(path: string, deviceKey: string, options?: RequestInit
   });
 }
 
-// ── QR Scanner (always-on strip) ──────────────────────────────────────────────
+// ── QR Scanner ────────────────────────────────────────────────────────────────
 
 function QRScanner({ onScan, paused }: { onScan: (token: string) => void; paused: boolean }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -125,12 +125,16 @@ function QRScanner({ onScan, paused }: { onScan: (token: string) => void; paused
       <canvas ref={canvasRef} className="hidden" />
       {/* Viewfinder */}
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-        <div className="w-32 h-32 border border-white/50 rounded-xl relative">
+        <div className="w-32 h-32 border border-white/30 rounded-xl relative overflow-hidden">
           <span className="absolute -top-0.5 -left-0.5 w-4 h-4 border-t-2 border-l-2 border-blue-400 rounded-tl-lg" />
           <span className="absolute -top-0.5 -right-0.5 w-4 h-4 border-t-2 border-r-2 border-blue-400 rounded-tr-lg" />
           <span className="absolute -bottom-0.5 -left-0.5 w-4 h-4 border-b-2 border-l-2 border-blue-400 rounded-bl-lg" />
           <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 border-b-2 border-r-2 border-blue-400 rounded-br-lg" />
+          {!paused && <div className="kiosk-scan-line" />}
         </div>
+      </div>
+      <div className="absolute bottom-2 left-0 right-0 flex justify-center pointer-events-none">
+        <p className="text-white/30 text-xs">ยื่น QR code ให้กล้อง เพื่อเช็คอิน</p>
       </div>
       {error && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/80">
@@ -152,9 +156,11 @@ function KioskPage() {
   const [schedule, setSchedule] = useState<DeviceSchedule | null>(null);
   const [now, setNow] = useState(new Date());
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
+  const [toastExiting, setToastExiting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [scanPaused, setScanPaused] = useState(false);
   const cooldownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Clock tick
   useEffect(() => {
@@ -212,6 +218,19 @@ function KioskPage() {
     return () => clearInterval(t);
   }, [deviceId, deviceKey]);
 
+  const showToast = useCallback((result: ScanResult) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToastExiting(false);
+    setScanResult(result);
+    toastTimerRef.current = setTimeout(() => {
+      setToastExiting(true);
+      setTimeout(() => {
+        setScanResult(null);
+        setToastExiting(false);
+      }, 220);
+    }, 3800);
+  }, []);
+
   const handleScan = useCallback(async (token: string) => {
     if (!deviceKey) return;
     setScanPaused(true);
@@ -222,20 +241,21 @@ function KioskPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setScanResult({ ok: false, message: data.message || "Check-in ล้มเหลว" });
+        showToast({ ok: false, message: data.message || "Check-in ล้มเหลว" });
       } else {
-        setScanResult({ ok: true, message: `เช็คอินสำเร็จ! ยินดีต้อนรับ ${data.user?.name ?? ""}` });
+        showToast({ ok: true, message: `เช็คอินสำเร็จ! ยินดีต้อนรับ ${data.user?.name ?? ""}` });
         fetchData();
       }
     } catch {
-      setScanResult({ ok: false, message: "เกิดข้อผิดพลาด กรุณาลองใหม่" });
+      showToast({ ok: false, message: "เกิดข้อผิดพลาด กรุณาลองใหม่" });
     }
-    setTimeout(() => setScanResult(null), 4000);
-    // 3-second cooldown before scanning again
     cooldownRef.current = setTimeout(() => setScanPaused(false), 3000);
-  }, [deviceId, deviceKey, fetchData]);
+  }, [deviceId, deviceKey, fetchData, showToast]);
 
-  useEffect(() => () => { if (cooldownRef.current) clearTimeout(cooldownRef.current); }, []);
+  useEffect(() => () => {
+    if (cooldownRef.current) clearTimeout(cooldownRef.current);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+  }, []);
 
   const isOccupied = !!status?.currentBooking;
   const roomName = status?.device?.room?.name ?? "No Room Assigned";
@@ -252,6 +272,18 @@ function KioskPage() {
   })();
   const cameraActive = !!checkInWindow;
 
+  // Progress towards next booking (0–100)
+  const nextProgress = (() => {
+    const next = status?.nextBooking;
+    if (!next) return null;
+    const start = new Date(next.startTime);
+    // Show progress from 1 hour before, or from now if closer
+    const windowStart = new Date(start.getTime() - 60 * 60 * 1000);
+    const total = start.getTime() - windowStart.getTime();
+    const elapsed = now.getTime() - windowStart.getTime();
+    return Math.max(0, Math.min(100, (elapsed / total) * 100));
+  })();
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-950 flex items-center justify-center">
@@ -264,7 +296,11 @@ function KioskPage() {
     <div className="min-h-screen bg-gray-950 text-white flex flex-col select-none overflow-hidden">
       {/* Scan result toast */}
       {scanResult && (
-        <div className={`fixed top-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl text-sm font-medium ${scanResult.ok ? "bg-green-600" : "bg-red-600"}`}>
+        <div
+          className={`fixed top-6 left-1/2 z-40 flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl text-sm font-medium ${
+            scanResult.ok ? "bg-green-600" : "bg-red-600"
+          } ${toastExiting ? "kiosk-toast-exit" : "kiosk-toast-enter"}`}
+        >
           {scanResult.ok ? <CheckCircle className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
           {scanResult.message}
         </div>
@@ -290,32 +326,50 @@ function KioskPage() {
         <div className="flex flex-col justify-between w-1/2 border-r border-white/10 p-8">
           <div>
             {/* Status badge */}
-            <div className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-semibold mb-6 ${isOccupied ? "bg-red-500/20 text-red-400" : "bg-green-500/20 text-green-400"}`}>
-              <span className={`w-2 h-2 rounded-full ${isOccupied ? "bg-red-400" : "bg-green-400 animate-pulse"}`} />
+            <div
+              className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-semibold mb-6 transition-all duration-700 ${
+                isOccupied ? "bg-red-500/20 text-red-400" : "bg-green-500/20 text-green-400"
+              }`}
+            >
+              <span
+                className={`w-2 h-2 rounded-full transition-colors duration-700 ${
+                  isOccupied ? "bg-red-400 animate-pulse" : "bg-green-400 animate-pulse"
+                }`}
+              />
               {isOccupied ? "กำลังใช้งาน" : "ว่าง"}
             </div>
 
-            {isOccupied && status?.currentBooking ? (
-              <div className="space-y-3">
-                <p className="text-4xl font-bold leading-tight">{status.currentBooking.purpose ?? "การประชุม"}</p>
-                <p className="text-gray-400 text-lg">{fmt(status.currentBooking.startTime)} – {fmt(status.currentBooking.endTime)}</p>
-                {status.currentBooking.user?.name && (
-                  <p className="text-gray-500 text-sm">โดย {status.currentBooking.user.name}</p>
-                )}
-              </div>
-            ) : (
-              <p className="text-5xl font-bold text-green-400">ว่าง</p>
-            )}
+            <div className="transition-all duration-700">
+              {isOccupied && status?.currentBooking ? (
+                <div className="space-y-3">
+                  <p className="text-4xl font-bold leading-tight">{status.currentBooking.purpose ?? "การประชุม"}</p>
+                  <p className="text-gray-400 text-lg">{fmt(status.currentBooking.startTime)} – {fmt(status.currentBooking.endTime)}</p>
+                  {status.currentBooking.user?.name && (
+                    <p className="text-gray-500 text-sm">โดย {status.currentBooking.user.name}</p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-5xl font-bold text-green-400">ว่าง</p>
+              )}
+            </div>
           </div>
 
-          {/* Next booking */}
+          {/* Next booking with progress bar */}
           {status?.nextBooking && (
-            <div className="bg-white/5 rounded-2xl p-5">
+            <div className="bg-white/5 rounded-2xl p-5 overflow-hidden">
               <p className="text-xs text-gray-500 uppercase tracking-widest mb-2">ถัดไป</p>
               <p className="font-semibold text-lg">{status.nextBooking.purpose ?? "การประชุม"}</p>
               <p className="text-gray-400 text-sm mt-1">
                 {fmt(status.nextBooking.startTime)} – {fmt(status.nextBooking.endTime)}
               </p>
+              {nextProgress !== null && (
+                <div className="mt-3 h-0.5 bg-white/10 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-blue-500/60 rounded-full transition-[width] duration-1000"
+                    style={{ width: `${nextProgress}%` }}
+                  />
+                </div>
+              )}
             </div>
           )}
 
@@ -331,19 +385,20 @@ function KioskPage() {
             {!schedule?.bookings.length ? (
               <p className="text-gray-600 text-sm">ไม่มีการจอง</p>
             ) : (
-              schedule.bookings.map((b) => {
+              schedule.bookings.map((b, i) => {
                 const isPast = new Date(b.endTime) < now;
                 const isCurrent = new Date(b.startTime) <= now && new Date(b.endTime) > now;
                 return (
                   <div
                     key={b.id}
-                    className={`rounded-xl p-4 border transition-colors ${
+                    className={`kiosk-card-in rounded-xl p-4 border transition-colors ${
                       isCurrent
                         ? "bg-red-500/10 border-red-500/30"
                         : isPast
                         ? "bg-white/3 border-white/5 opacity-40"
                         : "bg-white/5 border-white/10"
                     }`}
+                    style={{ animationDelay: `${i * 60}ms` }}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
@@ -370,18 +425,14 @@ function KioskPage() {
       <div className="border-t border-white/10 h-48 flex">
         <div className="flex-1 relative bg-black">
           {cameraActive ? (
-            <>
-              <QRScanner onScan={handleScan} paused={scanPaused} />
-              <div className="absolute bottom-2 left-0 right-0 flex justify-center pointer-events-none">
-                <p className="text-white/30 text-xs">ยื่น QR code ให้กล้อง เพื่อเช็คอิน</p>
-              </div>
-            </>
+            <QRScanner onScan={handleScan} paused={scanPaused} />
           ) : (
-            <div className="w-full h-full flex flex-col items-center justify-center gap-1">
+            <div className="w-full h-full flex flex-col items-center justify-center gap-2">
+              <Camera className="w-6 h-6 text-gray-700 animate-pulse" />
               {status?.nextBooking ? (
                 <>
                   <p className="text-gray-600 text-xs">กล้องจะเปิดเมื่อถึงเวลาเช็คอิน</p>
-                  <p className="text-gray-500 text-sm font-medium">
+                  <p className="text-gray-500 text-sm font-medium tabular-nums">
                     {fmt(new Date(new Date(status.nextBooking.startTime).getTime() - 10 * 60 * 1000).toISOString())} น.
                   </p>
                 </>
