@@ -10,12 +10,16 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ProfileRouteImport } from './routes/profile'
+import { Route as PairRouteImport } from './routes/pair'
 import { Route as HomeRouteImport } from './routes/home'
 import { Route as BookingsRouteImport } from './routes/bookings'
+import { Route as BannedRouteImport } from './routes/banned'
+import { Route as AuthErrorRouteImport } from './routes/auth-error'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as RoomsRoomIdRouteImport } from './routes/rooms.$roomId'
+import { Route as KioskDeviceIdRouteImport } from './routes/kiosk.$deviceId'
 import { Route as AdminUsersRouteImport } from './routes/admin/users'
 import { Route as AdminRoomsRouteImport } from './routes/admin/rooms'
 import { Route as AdminDevicesRouteImport } from './routes/admin/devices'
@@ -26,6 +30,11 @@ const ProfileRoute = ProfileRouteImport.update({
   path: '/profile',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PairRoute = PairRouteImport.update({
+  id: '/pair',
+  path: '/pair',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const HomeRoute = HomeRouteImport.update({
   id: '/home',
   path: '/home',
@@ -34,6 +43,16 @@ const HomeRoute = HomeRouteImport.update({
 const BookingsRoute = BookingsRouteImport.update({
   id: '/bookings',
   path: '/bookings',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BannedRoute = BannedRouteImport.update({
+  id: '/banned',
+  path: '/banned',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthErrorRoute = AuthErrorRouteImport.update({
+  id: '/auth-error',
+  path: '/auth-error',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminRoute = AdminRouteImport.update({
@@ -54,6 +73,11 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
 const RoomsRoomIdRoute = RoomsRoomIdRouteImport.update({
   id: '/rooms/$roomId',
   path: '/rooms/$roomId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const KioskDeviceIdRoute = KioskDeviceIdRouteImport.update({
+  id: '/kiosk/$deviceId',
+  path: '/kiosk/$deviceId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminUsersRoute = AdminUsersRouteImport.update({
@@ -80,25 +104,33 @@ const AdminBookingsRoute = AdminBookingsRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
+  '/auth-error': typeof AuthErrorRoute
+  '/banned': typeof BannedRoute
   '/bookings': typeof BookingsRoute
   '/home': typeof HomeRoute
+  '/pair': typeof PairRoute
   '/profile': typeof ProfileRoute
   '/admin/bookings': typeof AdminBookingsRoute
   '/admin/devices': typeof AdminDevicesRoute
   '/admin/rooms': typeof AdminRoomsRoute
   '/admin/users': typeof AdminUsersRoute
+  '/kiosk/$deviceId': typeof KioskDeviceIdRoute
   '/rooms/$roomId': typeof RoomsRoomIdRoute
   '/admin/': typeof AdminIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/auth-error': typeof AuthErrorRoute
+  '/banned': typeof BannedRoute
   '/bookings': typeof BookingsRoute
   '/home': typeof HomeRoute
+  '/pair': typeof PairRoute
   '/profile': typeof ProfileRoute
   '/admin/bookings': typeof AdminBookingsRoute
   '/admin/devices': typeof AdminDevicesRoute
   '/admin/rooms': typeof AdminRoomsRoute
   '/admin/users': typeof AdminUsersRoute
+  '/kiosk/$deviceId': typeof KioskDeviceIdRoute
   '/rooms/$roomId': typeof RoomsRoomIdRoute
   '/admin': typeof AdminIndexRoute
 }
@@ -106,13 +138,17 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteWithChildren
+  '/auth-error': typeof AuthErrorRoute
+  '/banned': typeof BannedRoute
   '/bookings': typeof BookingsRoute
   '/home': typeof HomeRoute
+  '/pair': typeof PairRoute
   '/profile': typeof ProfileRoute
   '/admin/bookings': typeof AdminBookingsRoute
   '/admin/devices': typeof AdminDevicesRoute
   '/admin/rooms': typeof AdminRoomsRoute
   '/admin/users': typeof AdminUsersRoute
+  '/kiosk/$deviceId': typeof KioskDeviceIdRoute
   '/rooms/$roomId': typeof RoomsRoomIdRoute
   '/admin/': typeof AdminIndexRoute
 }
@@ -121,38 +157,50 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/admin'
+    | '/auth-error'
+    | '/banned'
     | '/bookings'
     | '/home'
+    | '/pair'
     | '/profile'
     | '/admin/bookings'
     | '/admin/devices'
     | '/admin/rooms'
     | '/admin/users'
+    | '/kiosk/$deviceId'
     | '/rooms/$roomId'
     | '/admin/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/auth-error'
+    | '/banned'
     | '/bookings'
     | '/home'
+    | '/pair'
     | '/profile'
     | '/admin/bookings'
     | '/admin/devices'
     | '/admin/rooms'
     | '/admin/users'
+    | '/kiosk/$deviceId'
     | '/rooms/$roomId'
     | '/admin'
   id:
     | '__root__'
     | '/'
     | '/admin'
+    | '/auth-error'
+    | '/banned'
     | '/bookings'
     | '/home'
+    | '/pair'
     | '/profile'
     | '/admin/bookings'
     | '/admin/devices'
     | '/admin/rooms'
     | '/admin/users'
+    | '/kiosk/$deviceId'
     | '/rooms/$roomId'
     | '/admin/'
   fileRoutesById: FileRoutesById
@@ -160,9 +208,13 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRoute: typeof AdminRouteWithChildren
+  AuthErrorRoute: typeof AuthErrorRoute
+  BannedRoute: typeof BannedRoute
   BookingsRoute: typeof BookingsRoute
   HomeRoute: typeof HomeRoute
+  PairRoute: typeof PairRoute
   ProfileRoute: typeof ProfileRoute
+  KioskDeviceIdRoute: typeof KioskDeviceIdRoute
   RoomsRoomIdRoute: typeof RoomsRoomIdRoute
 }
 
@@ -173,6 +225,13 @@ declare module '@tanstack/react-router' {
       path: '/profile'
       fullPath: '/profile'
       preLoaderRoute: typeof ProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pair': {
+      id: '/pair'
+      path: '/pair'
+      fullPath: '/pair'
+      preLoaderRoute: typeof PairRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/home': {
@@ -187,6 +246,20 @@ declare module '@tanstack/react-router' {
       path: '/bookings'
       fullPath: '/bookings'
       preLoaderRoute: typeof BookingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/banned': {
+      id: '/banned'
+      path: '/banned'
+      fullPath: '/banned'
+      preLoaderRoute: typeof BannedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth-error': {
+      id: '/auth-error'
+      path: '/auth-error'
+      fullPath: '/auth-error'
+      preLoaderRoute: typeof AuthErrorRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin': {
@@ -215,6 +288,13 @@ declare module '@tanstack/react-router' {
       path: '/rooms/$roomId'
       fullPath: '/rooms/$roomId'
       preLoaderRoute: typeof RoomsRoomIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/kiosk/$deviceId': {
+      id: '/kiosk/$deviceId'
+      path: '/kiosk/$deviceId'
+      fullPath: '/kiosk/$deviceId'
+      preLoaderRoute: typeof KioskDeviceIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/users': {
@@ -269,20 +349,15 @@ const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRoute: AdminRouteWithChildren,
+  AuthErrorRoute: AuthErrorRoute,
+  BannedRoute: BannedRoute,
   BookingsRoute: BookingsRoute,
   HomeRoute: HomeRoute,
+  PairRoute: PairRoute,
   ProfileRoute: ProfileRoute,
+  KioskDeviceIdRoute: KioskDeviceIdRoute,
   RoomsRoomIdRoute: RoomsRoomIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}

@@ -40,7 +40,9 @@ COPY --from=builder /app/tsconfig.json ./
 COPY --from=builder /app/libs ./libs
 COPY --from=builder /app/utils ./utils
 COPY --from=builder /app/prisma.config.ts ./
+COPY --from=builder /app/migrate.ts ./
 
 EXPOSE 3000
 
-CMD ["bun", "src/index.ts"]
+# Run migrations then start the server
+CMD ["sh", "-c", "bun node_modules/.bin/prisma migrate deploy && bun src/index.ts"]

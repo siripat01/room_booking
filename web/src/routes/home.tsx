@@ -16,9 +16,15 @@ export const Route = createFileRoute("/home")({
     if (typeof window === "undefined") return;
     try {
       const user = await queryClient.ensureQueryData(sessionQuery());
-      if (!user) throw redirect({ to: "/", search: { redirect: location.pathname } });
+      if (user) {
+        localStorage.setItem("rb_authed", "1");
+      } else {
+        localStorage.removeItem("rb_authed");
+        throw redirect({ to: "/", search: { redirect: location.pathname } });
+      }
     } catch (e: any) {
       if (e?.isRedirect) throw e;
+      localStorage.removeItem("rb_authed");
       throw redirect({ to: "/", search: { redirect: location.pathname } });
     }
   },

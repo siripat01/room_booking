@@ -23,7 +23,7 @@ export class DeviceService {
             });
             return { device, deviceKey };
         } catch (e) {
-            console.log(e);
+            console.error(e);
             throw new Error("Failed to create device");
         }
     }
@@ -33,9 +33,10 @@ export class DeviceService {
             return await this.prisma.device.findMany({
                 include: { room: true },
                 orderBy: { createdAt: "desc" },
+                take: 200,
             });
         } catch (e) {
-            console.log(e);
+            console.error(e);
             throw new Error("Failed to get all devices");
         }
     }
@@ -47,7 +48,7 @@ export class DeviceService {
                 include: { room: true },
             });
         } catch (e) {
-            console.log(e);
+            console.error(e);
             throw new Error("Failed to get device");
         }
     }
@@ -60,7 +61,7 @@ export class DeviceService {
                 include: { room: true },
             });
         } catch (e) {
-            console.log(e);
+            console.error(e);
             throw new Error("Failed to update device");
         }
     }
@@ -69,7 +70,7 @@ export class DeviceService {
         try {
             return await this.prisma.device.delete({ where: { id } });
         } catch (e) {
-            console.log(e);
+            console.error(e);
             throw new Error("Failed to delete device");
         }
     }
@@ -83,7 +84,7 @@ export class DeviceService {
             });
             return { deviceKey };
         } catch (e) {
-            console.log(e);
+            console.error(e);
             throw new Error("Failed to rotate device key");
         }
     }
@@ -109,7 +110,7 @@ export class DeviceService {
         const currentBooking = await this.prisma.booking.findFirst({
             where: {
                 roomId: device.roomId,
-                status: { in: ["CONFIRMED", "CHECKED_IN"] },
+                status: { in: ["CHECKED_IN"] },
                 startTime: { lte: now },
                 endTime: { gt: now },
             },
@@ -147,9 +148,41 @@ export class DeviceService {
             },
             include: { user: { select: { name: true } } },
             orderBy: { startTime: "asc" },
+            take: 50,
         });
 
         return { device, bookings };
+    }
+
+    async generatePairingCode(deviceId: string): Promise<{ code: string; expiresAt: Date }> {
+        const device = await this.prisma.device.findUnique({ where: { id: deviceId } });
+        if (!device) throw new Error("Device not found");
+
+        const code = Math.floor(100000 + Math.random() * 900000).toString();
+        const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+        await this.prisma.verification.create({
+            data: {
+                id: randomBytes(16).toString("hex"),
+                identifier: `pairing:${code}`,
+                value: `${deviceId}|${device.deviceKey}`,
+                expiresAt,
+            },
+        });
+
+        return { code, expiresAt };
+    }
+
+    async pairDevice(code: string): Promise<{ deviceId: string; deviceKey: string }> {
+        const verification = await this.prisma.verification.findFirst({
+            where: { identifier: `pairing:${code}`, expiresAt: { gt: new Date() } },
+        });
+        if (!verification) throw new Error("Invalid or expired pairing code");
+
+        await this.prisma.verification.delete({ where: { id: verification.id } });
+
+        const [deviceId, deviceKey] = verification.value.split("|");
+        return { deviceId, deviceKey };
     }
 
     async scanQr(id: string, qrToken: string) {
@@ -168,6 +201,11 @@ export class DeviceService {
         if (booking.status !== "CONFIRMED") throw new Error("Booking is not confirmed");
         if (!booking.qrExpiresAt || booking.qrExpiresAt < new Date()) throw new Error("QR token has expired");
         if (device.roomId && booking.roomId !== device.roomId) throw new Error("QR code is for a different room");
+
+        const now = new Date();
+        const checkInOpens = new Date(booking.startTime.getTime() - 10 * 60 * 1000);
+        if (now < checkInOpens) throw new Error("Too early to check in — opens 10 minutes before start");
+        if (now > booking.startTime) throw new Error("Check-in window has passed");
 
         return this.prisma.booking.update({
             where: { id: booking.id },

@@ -21,6 +21,8 @@ export const sessionQuery = () => ({
       isAdmin: role === "adminRole",
       isTeacher: role === "teacherRole",
       isStudent: role === "userRole",
+      banned: (u.banned as boolean | null) ?? false,
+      banReason: (u.banReason as string | null) ?? null,
     };
   },
   staleTime: 1000 * 60 * 5, // 5 min
@@ -64,6 +66,7 @@ export const bookingsQuery = (params?: { status?: string; page?: number }) => ({
       query: {
         status: params?.status,
         page: params?.page?.toString(),
+        forSelf: "true",
       },
     });
     if (error) throw error;
@@ -82,14 +85,15 @@ export const bookingQuery = (id: string) => ({
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
 
-export const adminBookingsQuery = (params?: { status?: string; page?: number }) => ({
+export const adminBookingsQuery = (params?: { status?: string; page?: number; search?: string }) => ({
   queryKey: ["admin", "bookings", params],
   queryFn: async () => {
     const { data, error } = await (app.api.bookings as any).get({
       query: {
         status: params?.status,
         page: params?.page?.toString(),
-        limit: "50",
+        limit: "30",
+        search: params?.search,
       },
     });
     if (error) throw error;
@@ -97,11 +101,11 @@ export const adminBookingsQuery = (params?: { status?: string; page?: number }) 
   },
 });
 
-export const adminUsersQuery = (params?: { search?: string; role?: string }) => ({
+export const adminUsersQuery = (params?: { search?: string; role?: string; page?: number }) => ({
   queryKey: ["admin", "users", params],
   queryFn: async () => {
     const { data, error } = await (app.api.users as any).get({
-      query: { search: params?.search, role: params?.role },
+      query: { search: params?.search, role: params?.role, page: params?.page?.toString(), limit: "20" },
     });
     if (error) throw error;
     return data as UserListResponse;
@@ -162,6 +166,7 @@ export type Room = {
   capacity: number;
   floor: string;
   amenities: string[];
+  allowedRoles: string[];
   isActive: boolean;
 };
 

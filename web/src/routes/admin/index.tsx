@@ -140,7 +140,7 @@ function AdminDashboard() {
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={(v) => v.slice(5)} />
+                  <XAxis type="category" dataKey="date" tick={{ fontSize: 10 }} tickFormatter={(v) => typeof v === "string" ? v.slice(5) : ""} />
                   <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
                   <Tooltip
                     contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e2e8f0" }}
@@ -250,7 +250,7 @@ function PendingRow({
   const start = new Date(booking.startTime);
   const end = new Date(booking.endTime);
   return (
-    <div className="flex items-center justify-between gap-4 p-3 rounded-lg border bg-white hover:bg-slate-50 transition-colors">
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 rounded-lg border bg-white hover:bg-slate-50 transition-colors">
       <div className="min-w-0 flex items-center gap-3">
         <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center shrink-0">
           <Timer className="w-4 h-4 text-amber-500" />
@@ -268,7 +268,7 @@ function PendingRow({
           </p>
         </div>
       </div>
-      <div className="flex gap-2 shrink-0">
+      <div className="flex gap-2 sm:shrink-0">
         <Button size="sm" onClick={() => onApprove(booking.id)} disabled={acting}
           className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 px-3">
           {acting ? <Loader2 className="w-3 h-3 animate-spin" /> : "Approve"}

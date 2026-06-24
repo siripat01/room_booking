@@ -4,4 +4,5 @@ export type CreateRoomInput = {
     capacity: number;
     floor: string;
     amenities: string[];
+    allowedRoles?: string[];
 }

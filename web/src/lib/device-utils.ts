@@ -87,15 +87,6 @@ export function getStatusBadgeVariant(status: DeviceStatus): "default" | "succes
   }
 }
 
-export function generateDeviceKey(): string {
-  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-  let key = "dk_";
-  for (let i = 0; i < 32; i++) {
-    key += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return key;
-}
-
 export function getAvailableRooms(rooms: Device["room"][]): (Device["room"] & { hasDevice: boolean })[] {
   return rooms
     .filter((room) => room && room.isActive)

@@ -6,7 +6,8 @@ import { app } from "../../lib/api";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
-import { Cpu, Plus, Loader2 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../../components/ui/dialog";
+import { Cpu, Plus, Loader2, Smartphone, Copy, Check } from "lucide-react";
 import { toast } from "sonner";
 import { DeviceFormModal } from "../../components/devices/DeviceFormModal";
 import { DeviceDetailSheet } from "../../components/devices/DeviceDetailSheet";
@@ -52,6 +53,10 @@ function AdminDevicesPage() {
   const [rotateTarget, setRotateTarget] = useState<AdminDevice | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<AdminDevice | null>(null);
+  const [pairOpen, setPairOpen] = useState(false);
+  const [pairCode, setPairCode] = useState("");
+  const [pairDevice, setPairDevice] = useState<AdminDevice | null>(null);
+  const [codeCopied, setCodeCopied] = useState(false);
 
   const { data: devices = [], isLoading: loadingDevices } = useQuery(devicesQuery());
   const { data: apiRooms = [] } = useQuery(roomsQuery());
@@ -119,6 +124,22 @@ function AdminDevicesPage() {
     onError: () => toast.error("Failed to delete Kiosk"),
   });
 
+  const pairMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/devices/${id}/generate-pairing`, { method: "POST", credentials: "include" });
+      if (!res.ok) throw new Error("Failed to generate pairing code");
+      return res.json() as Promise<{ code: string; expiresAt: string }>;
+    },
+    onSuccess: (data, id) => {
+      const device = (devices as AdminDevice[]).find((d) => d.id === id) ?? null;
+      setPairDevice(device);
+      setPairCode(data.code);
+      setCodeCopied(false);
+      setPairOpen(true);
+    },
+    onError: () => toast.error("Failed to generate pairing code"),
+  });
+
   async function handleFormSubmit(data: { name: string; roomId: string | null }) {
     if (editTarget) {
       updateMutation.mutate({ id: editTarget.id, data });
@@ -159,7 +180,7 @@ function AdminDevicesPage() {
   });
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold">Devices</h1>
@@ -197,7 +218,7 @@ function AdminDevicesPage() {
         </div>
       ) : (
         <div className="rounded-lg border bg-background overflow-hidden">
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto"><table className="w-full text-sm">
             <thead className="bg-secondary/50">
               <tr>
                 {["Name", "Status", "Room", "Last Seen", "Actions"].map((h) => (
@@ -239,6 +260,10 @@ function AdminDevicesPage() {
                           Edit
                         </Button>
                         <Button size="sm" variant="outline" className="h-7 text-xs"
+                          onClick={() => pairMutation.mutate(device.id)}>
+                          Pair
+                        </Button>
+                        <Button size="sm" variant="outline" className="h-7 text-xs"
                           onClick={() => { setRotateTarget(device); setRotateOpen(true); }}>
                           Rotate Key
                         </Button>
@@ -253,7 +278,7 @@ function AdminDevicesPage() {
                 );
               })}
             </tbody>
-          </table>
+          </table></div>
         </div>
       )}
 
@@ -298,6 +323,45 @@ function AdminDevicesPage() {
         deviceName={deleteTarget?.name ?? ""}
         onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
       />
+
+      <Dialog open={pairOpen} onOpenChange={setPairOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Smartphone className="w-5 h-5" /> Pair Device
+            </DialogTitle>
+            <DialogDescription>
+              On your iPad, open a browser and go to the URL below, then enter this code.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="bg-muted rounded-lg p-3 text-sm font-mono break-all text-center text-muted-foreground">
+              {window.location.origin}/pair
+            </div>
+
+            <div className="text-center">
+              <p className="text-xs text-muted-foreground mb-2">Pairing code (expires in 10 min)</p>
+              <div className="flex items-center justify-center gap-3">
+                <span className="text-5xl font-mono font-bold tracking-[0.2em]">{pairCode}</span>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(pairCode);
+                    setCodeCopied(true);
+                    setTimeout(() => setCodeCopied(false), 2000);
+                  }}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {codeCopied ? <Check className="w-5 h-5 text-green-500" /> : <Copy className="w-5 h-5" />}
+                </button>
+              </div>
+              {pairDevice && <p className="text-xs text-muted-foreground mt-2">{pairDevice.name}</p>}
+            </div>
+          </div>
+
+          <Button onClick={() => setPairOpen(false)} className="w-full">Done</Button>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

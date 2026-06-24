@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { adminBookingsQuery, type BookingStatus, type Booking } from "../../lib/queries";
 import { app } from "../../lib/api";
@@ -11,7 +11,7 @@ import { Textarea } from "../../components/ui/textarea";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "../../components/ui/dialog";
-import { CalendarDays, Clock, Users, CheckCircle2, XCircle, Loader2, Search } from "lucide-react";
+import { CalendarDays, Clock, Users, CheckCircle2, XCircle, Loader2, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/bookings")({
@@ -32,23 +32,43 @@ const STATUS_CONFIG: Record<BookingStatus, { label: string; variant: any; cls: s
   EXPIRED:    { label: "Expired",    variant: "outline",     cls: "" },
 };
 
-const TABS: { label: string; statuses: BookingStatus[] | null }[] = [
-  { label: "All",       statuses: null },
-  { label: "Pending",   statuses: ["PENDING"] },
-  { label: "Confirmed", statuses: ["CONFIRMED", "CHECKED_IN"] },
-  { label: "Done",      statuses: ["COMPLETED", "EXPIRED"] },
-  { label: "Cancelled", statuses: ["CANCELLED", "REJECTED"] },
+const TABS: { label: string; statusQuery?: string }[] = [
+  { label: "All",       statusQuery: undefined },
+  { label: "Pending",   statusQuery: "PENDING" },
+  { label: "Confirmed", statusQuery: "CONFIRMED,CHECKED_IN" },
+  { label: "Done",      statusQuery: "COMPLETED,EXPIRED" },
+  { label: "Cancelled", statusQuery: "CANCELLED,REJECTED" },
 ];
+
+const LIMIT = 30;
 
 function AdminBookingsPage() {
   const qc = useQueryClient();
   const [tab, setTab] = useState(0);
+  const [page, setPage] = useState(1);
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [rejectTarget, setRejectTarget] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
+  const tabTotals = useRef<Record<number, number>>({});
 
-  const { data, isLoading: loading } = useQuery(adminBookingsQuery());
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => { setSearch(searchInput); setPage(1); }, 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  const { data, isLoading: loading } = useQuery(
+    adminBookingsQuery({ status: TABS[tab].statusQuery, page, search: search || undefined }),
+  );
   const bookings: Booking[] = (data as any)?.bookings ?? [];
+  const total: number = (data as any)?.total ?? 0;
+  const totalPages: number = (data as any)?.totalPages ?? 1;
+
+  // Keep per-tab totals so inactive tabs still show a count badge
+  useEffect(() => {
+    if (!loading && total > 0) tabTotals.current[tab] = total;
+  }, [loading, tab, total]);
 
   const approveMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -73,21 +93,18 @@ function AdminBookingsPage() {
     onError: () => toast.error("Failed to reject"),
   });
 
-  const activeStatuses = TABS[tab].statuses;
-  const displayed = bookings
-    .filter((b) => !activeStatuses || (activeStatuses as string[]).includes(b.status))
-    .filter((b) => {
-      if (!search) return true;
-      const q = search.toLowerCase();
-      return b.room?.name?.toLowerCase().includes(q) || b.user?.name?.toLowerCase().includes(q) ||
-        b.user?.email?.toLowerCase().includes(q) || b.purpose?.toLowerCase().includes(q);
-    });
+  const displayed = bookings;
 
-  const tabCount = (s: BookingStatus[] | null) =>
-    bookings.filter((b) => !s || (s as string[]).includes(b.status)).length;
+  function switchTab(i: number) {
+    setTab(i);
+    setPage(1);
+  }
+
+  const from = total === 0 ? 0 : (page - 1) * LIMIT + 1;
+  const to = Math.min(page * LIMIT, total);
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-900">Bookings</h1>
         <p className="text-muted-foreground text-sm mt-0.5">Review and manage all room booking requests</p>
@@ -98,23 +115,30 @@ function AdminBookingsPage() {
         <div className="px-5 pt-4 pb-0 border-b">
           <div className="relative max-w-sm mb-4">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input placeholder="Search by room, user, or purpose…" value={search}
-              onChange={(e) => setSearch(e.target.value)} className="pl-9 border-slate-200 bg-slate-50" />
+            <Input placeholder="Search by room, user, or purpose…" value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)} className="pl-9 border-slate-200 bg-slate-50" />
           </div>
           <div className="flex gap-0">
-            {TABS.map(({ label, statuses }, i) => (
-              <button key={label} onClick={() => setTab(i)}
-                className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-                  tab === i
-                    ? "border-blue-600 text-blue-700"
-                    : "border-transparent text-muted-foreground hover:text-slate-700"
-                }`}>
-                {label}
-                <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-xs ${
-                  tab === i ? "bg-blue-100 text-blue-700" : "bg-slate-100"
-                }`}>{tabCount(statuses)}</span>
-              </button>
-            ))}
+            {TABS.map(({ label }, i) => {
+              const displayCount = tab === i ? total : (tabTotals.current[i] ?? 0);
+              return (
+                <button key={label} onClick={() => switchTab(i)}
+                  className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                    tab === i
+                      ? "border-blue-600 text-blue-700"
+                      : "border-transparent text-muted-foreground hover:text-slate-700"
+                  }`}>
+                  {label}
+                  {displayCount > 0 && (
+                    <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-xs ${
+                      tab === i ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-600"
+                    }`}>
+                      {displayCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -128,7 +152,7 @@ function AdminBookingsPage() {
             <p className="text-sm font-medium">No bookings found</p>
           </div>
         ) : (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto"><table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-50 border-b">
                 {["Room", "User", "Date & Time", "Purpose", "Attendees", "Status", "Actions"].map((h) => (
@@ -202,7 +226,27 @@ function AdminBookingsPage() {
                 );
               })}
             </tbody>
-          </table>
+          </table></div>
+        )}
+
+        {/* Pagination */}
+        {!loading && totalPages > 1 && (
+          <div className="flex items-center justify-between px-5 py-3 border-t text-sm">
+            <span className="text-muted-foreground text-xs">
+              {from}–{to} จาก {total} รายการ
+            </span>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" className="h-7 px-2"
+                onClick={() => setPage((p) => p - 1)} disabled={page <= 1}>
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              <span className="text-xs text-muted-foreground tabular-nums">หน้า {page}/{totalPages}</span>
+              <Button variant="outline" size="sm" className="h-7 px-2"
+                onClick={() => setPage((p) => p + 1)} disabled={page >= totalPages}>
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
         )}
       </div>
 

@@ -1,8 +1,8 @@
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCurrentUser } from "../lib/useCurrentUser";
-import { roomQuery, sessionQuery } from "../lib/queries";
+import { roomQuery, roomAvailabilityQuery, sessionQuery } from "../lib/queries";
 import { app } from "../lib/api";
 import { Navbar } from "../components/Navbar";
 import { Button } from "../components/ui/button";
@@ -36,6 +36,17 @@ export const Route = createFileRoute("/rooms/$roomId")({
   component: RoomDetailPage,
 });
 
+const SLOTS = [
+  { start: "08:00", end: "09:00" },
+  { start: "09:00", end: "10:00" },
+  { start: "10:00", end: "11:00" },
+  { start: "11:00", end: "12:00" },
+  { start: "12:00", end: "13:00" },
+  { start: "13:00", end: "14:00" },
+  { start: "14:00", end: "15:00" },
+  { start: "15:00", end: "16:00" },
+] as const;
+
 const AMENITY_ICONS: Record<string, React.ReactNode> = {
   projector: <Monitor className="w-4 h-4" />,
   whiteboard: <PenSquare className="w-4 h-4" />,
@@ -61,19 +72,46 @@ function RoomDetailPage() {
   const { data: room, isLoading: roomLoading } = useQuery(roomQuery(roomId));
   const [booking, setBooking] = useState<BookingResult | null>(null);
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = new Date().toLocaleDateString("en-CA");
   const [form, setForm] = useState({
     date: today,
-    startTime: "09:00",
-    endTime: "10:00",
+    slot: "" as string,
     attendees: "1",
     purpose: "",
   });
 
+  const { data: availability } = useQuery({
+    ...roomAvailabilityQuery(roomId, form.date),
+    staleTime: 30_000,
+  });
+
+  const now = new Date();
+
+  const bookedSlots = new Set<string>(
+    SLOTS.filter((s) => {
+      if (!availability?.bookings?.length) return false;
+      const slotStart = new Date(`${form.date}T${s.start}:00`);
+      const slotEnd = new Date(`${form.date}T${s.end}:00`);
+      return availability.bookings.some((b) => new Date(b.startTime) < slotEnd && new Date(b.endTime) > slotStart);
+    }).map((s) => s.start),
+  );
+
+  const pastSlots = new Set<string>(
+    SLOTS.filter((s) => new Date(`${form.date}T${s.start}:00`) < now).map((s) => s.start),
+  );
+
+  // Clear selected slot if it becomes unavailable (e.g. date changed or someone else books it)
+  useEffect(() => {
+    if (form.slot && (bookedSlots.has(form.slot) || pastSlots.has(form.slot))) {
+      setForm((f) => ({ ...f, slot: "" }));
+    }
+  }, [form.date, availability]);
+
   const bookMutation = useMutation({
     mutationFn: async () => {
-      const startTime = new Date(`${form.date}T${form.startTime}:00`).toISOString();
-      const endTime = new Date(`${form.date}T${form.endTime}:00`).toISOString();
+      const slot = SLOTS.find((s) => s.start === form.slot)!;
+      const startTime = new Date(`${form.date}T${slot.start}:00`).toISOString();
+      const endTime = new Date(`${form.date}T${slot.end}:00`).toISOString();
       const { data, error } = await (app.api.bookings as any).post({
         roomId,
         startTime,
@@ -97,12 +135,15 @@ function RoomDetailPage() {
 
   function handleBooking(e: React.FormEvent) {
     e.preventDefault();
+    if (!form.slot) { toast.error("Please select a time slot."); return; }
+    if (pastSlots.has(form.slot)) { toast.error("Cannot book a time slot in the past."); return; }
     if (!form.purpose.trim()) { toast.error("Please enter a purpose."); return; }
-    if (form.startTime >= form.endTime) { toast.error("End time must be after start time."); return; }
     bookMutation.mutate();
   }
 
   const autoConfirm = user?.isTeacher || user?.isAdmin;
+  const userRole = user?.isAdmin ? "adminRole" : user?.isTeacher ? "teacherRole" : "userRole";
+  const canBook = !room || !room.allowedRoles?.length || room.allowedRoles.includes(userRole);
 
   if (roomLoading) {
     return (
@@ -228,7 +269,19 @@ function RoomDetailPage() {
               </CardHeader>
               <Separator />
               <CardContent className="pt-5">
-                {booking ? (
+                {!canBook ? (
+                  <div className="py-8 text-center space-y-3">
+                    <div className="w-14 h-14 rounded-full bg-red-50 flex items-center justify-center mx-auto">
+                      <Users className="w-7 h-7 text-red-400" />
+                    </div>
+                    <p className="font-medium text-slate-800">ไม่สามารถจองได้</p>
+                    <p className="text-sm text-muted-foreground">ห้องนี้เปิดให้จองเฉพาะ{" "}
+                      {room?.allowedRoles?.map((r) =>
+                        r === "teacherRole" ? "อาจารย์" : r === "adminRole" ? "แอดมิน" : "นักศึกษา"
+                      ).join(", ")} เท่านั้น
+                    </p>
+                  </div>
+                ) : booking ? (
                   <div className="py-6 text-center space-y-4">
                     <div className={`w-16 h-16 rounded-full mx-auto flex items-center justify-center ${
                       (booking as any).status === "CONFIRMED" ? "bg-emerald-50" : "bg-amber-50"
@@ -260,28 +313,49 @@ function RoomDetailPage() {
                   <form onSubmit={handleBooking} className="space-y-4">
                     <div className="space-y-1.5">
                       <Label htmlFor="date" className="text-sm font-medium flex items-center gap-1.5">
-                        <CalendarDays className="w-3.5 h-3.5 text-blue-600" /> Date
+                        <CalendarDays className="w-3.5 h-3.5 text-blue-600" /> วันที่
                       </Label>
                       <Input id="date" type="date" min={today} value={form.date}
-                        onChange={(e) => setForm((f) => ({ ...f, date: e.target.value }))} required
+                        onChange={(e) => setForm((f) => ({ ...f, date: e.target.value, slot: "" }))} required
                         className="border-slate-200" />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1.5">
-                        <Label htmlFor="startTime" className="text-sm font-medium flex items-center gap-1.5">
-                          <Clock className="w-3.5 h-3.5 text-blue-600" /> Start
-                        </Label>
-                        <Input id="startTime" type="time" value={form.startTime}
-                          onChange={(e) => setForm((f) => ({ ...f, startTime: e.target.value }))} required
-                          className="border-slate-200" />
+                    <div className="space-y-1.5">
+                      <Label className="text-sm font-medium flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-blue-600" /> Time Slot
+                      </Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {SLOTS.map((s) => {
+                          const booked = bookedSlots.has(s.start);
+                          const past = pastSlots.has(s.start);
+                          const unavailable = booked || past;
+                          const selected = form.slot === s.start;
+                          return (
+                            <button
+                              key={s.start}
+                              type="button"
+                              disabled={unavailable}
+                              onClick={() => setForm((f) => ({ ...f, slot: s.start }))}
+                              className={`px-3 py-2 rounded-lg border text-sm font-medium transition-colors text-left ${
+                                booked
+                                  ? "border-red-200 bg-red-50 text-red-400 cursor-not-allowed"
+                                  : past
+                                  ? "border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed"
+                                  : selected
+                                  ? "bg-blue-600 text-white border-blue-600"
+                                  : "border-slate-200 hover:border-blue-300 hover:bg-blue-50 text-slate-700"
+                              }`}
+                            >
+                              <div>{s.start}–{s.end}</div>
+                              {booked && <div className="text-xs font-normal mt-0.5 text-red-400">จองแล้ว</div>}
+                              {past && !booked && <div className="text-xs font-normal mt-0.5 text-slate-400">ผ่านไปแล้ว</div>}
+                            </button>
+                          );
+                        })}
                       </div>
-                      <div className="space-y-1.5">
-                        <Label htmlFor="endTime" className="text-sm font-medium">End</Label>
-                        <Input id="endTime" type="time" value={form.endTime}
-                          onChange={(e) => setForm((f) => ({ ...f, endTime: e.target.value }))} required
-                          className="border-slate-200" />
-                      </div>
+                      {!form.slot && (
+                        <p className="text-xs text-muted-foreground">เลือกช่วงเวลาที่ต้องการ</p>
+                      )}
                     </div>
 
                     <div className="space-y-1.5">

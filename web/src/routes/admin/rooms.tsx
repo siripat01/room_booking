@@ -31,7 +31,13 @@ const AMENITY_OPTIONS = [
   { value: "wifi", label: "Wi-Fi", icon: Wifi },
 ];
 
-const EMPTY_FORM = { name: "", description: "", capacity: "10", floor: "", amenities: [] as string[] };
+const ROLE_OPTIONS = [
+  { value: "userRole", label: "นักศึกษา" },
+  { value: "teacherRole", label: "อาจารย์" },
+  { value: "adminRole", label: "แอดมิน" },
+];
+
+const EMPTY_FORM = { name: "", description: "", capacity: "10", floor: "", amenities: [] as string[], allowedRoles: [] as string[] };
 
 function AdminRoomsPage() {
   const qc = useQueryClient();
@@ -43,7 +49,7 @@ function AdminRoomsPage() {
   const { data: rooms = [], isLoading: loading } = useQuery(roomsQuery());
 
   const saveMutation = useMutation({
-    mutationFn: async (payload: { name: string; description?: string; capacity: number; floor: string; amenities: string[] }) => {
+    mutationFn: async (payload: { name: string; description?: string; capacity: number; floor: string; amenities: string[]; allowedRoles: string[] }) => {
       if (editTarget) {
         const { error } = await (app.api.rooms as any)[editTarget.id].put(payload);
         if (error) throw error;
@@ -77,7 +83,7 @@ function AdminRoomsPage() {
 
   function openEdit(room: Room) {
     setEditTarget(room);
-    setForm({ name: room.name, description: room.description ?? "", capacity: String(room.capacity), floor: room.floor, amenities: [...room.amenities] });
+    setForm({ name: room.name, description: room.description ?? "", capacity: String(room.capacity), floor: room.floor, amenities: [...room.amenities], allowedRoles: [...(room.allowedRoles ?? [])] });
     setModalOpen(true);
   }
 
@@ -85,13 +91,17 @@ function AdminRoomsPage() {
     setForm((f) => ({ ...f, amenities: f.amenities.includes(val) ? f.amenities.filter((a) => a !== val) : [...f.amenities, val] }));
   }
 
+  function toggleRole(val: string) {
+    setForm((f) => ({ ...f, allowedRoles: f.allowedRoles.includes(val) ? f.allowedRoles.filter((r) => r !== val) : [...f.allowedRoles, val] }));
+  }
+
   function handleSave() {
     if (!form.name.trim() || !form.floor.trim()) { toast.error("Name and floor are required"); return; }
-    saveMutation.mutate({ name: form.name.trim(), description: form.description.trim() || undefined, capacity: parseInt(form.capacity) || 10, floor: form.floor.trim(), amenities: form.amenities });
+    saveMutation.mutate({ name: form.name.trim(), description: form.description.trim() || undefined, capacity: parseInt(form.capacity) || 10, floor: form.floor.trim(), amenities: form.amenities, allowedRoles: form.allowedRoles });
   }
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Rooms</h1>
@@ -114,10 +124,10 @@ function AdminRoomsPage() {
         </div>
       ) : (
         <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto"><table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-50 border-b">
-                {["Room", "Floor", "Capacity", "Amenities", "Status", "Actions"].map((h) => (
+                {["Room", "Floor", "Capacity", "Amenities", "จองได้", "Status", "Actions"].map((h) => (
                   <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{h}</th>
                 ))}
               </tr>
@@ -146,6 +156,17 @@ function AdminRoomsPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3.5">
+                    <div className="flex flex-wrap gap-1">
+                      {!(room as any).allowedRoles?.length ? (
+                        <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-700 text-xs rounded-md border border-emerald-100">ทุกคน</span>
+                      ) : (room as any).allowedRoles.map((r: string) => (
+                        <span key={r} className="px-1.5 py-0.5 bg-violet-50 text-violet-700 text-xs rounded-md border border-violet-100">
+                          {r === "teacherRole" ? "อาจารย์" : r === "adminRole" ? "แอดมิน" : "นักศึกษา"}
+                        </span>
+                      ))}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3.5">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${
                       room.isActive ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-500 border-slate-200"
                     }`}>
@@ -166,7 +187,7 @@ function AdminRoomsPage() {
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
       )}
 
@@ -204,6 +225,20 @@ function AdminRoomsPage() {
                     }`}>
                       <Checkbox checked={form.amenities.includes(value)} onCheckedChange={() => toggleAmenity(value)} />
                       <Icon className="w-3.5 h-3.5" />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="col-span-2 space-y-2">
+                <Label>ใครจองได้</Label>
+                <p className="text-xs text-muted-foreground -mt-1">ไม่เลือก = ทุกคนจองได้</p>
+                <div className="flex gap-2 flex-wrap">
+                  {ROLE_OPTIONS.map(({ value, label }) => (
+                    <label key={value} className={`flex items-center gap-2 cursor-pointer text-sm px-3 py-2 rounded-lg border transition-colors ${
+                      form.allowedRoles.includes(value) ? "border-blue-300 bg-blue-50 text-blue-700" : "border-slate-200 hover:border-slate-300"
+                    }`}>
+                      <Checkbox checked={form.allowedRoles.includes(value)} onCheckedChange={() => toggleRole(value)} />
                       {label}
                     </label>
                   ))}

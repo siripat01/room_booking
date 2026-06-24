@@ -10,14 +10,10 @@ import { Label } from "../../components/ui/label";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "../../components/ui/dialog";
-import { Users, Search, Loader2, ShieldAlert, CalendarDays } from "lucide-react";
+import { Users, Search, Loader2, ShieldAlert, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/users")({
-  loader: ({ context: { queryClient } }) => {
-    if (typeof window === "undefined") return;
-    return queryClient.ensureQueryData(adminUsersQuery());
-  },
   component: AdminUsersPage,
 });
 
@@ -27,20 +23,17 @@ const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
   { value: "adminRole", label: "Admin" },
 ];
 
-const ROLE_BADGE: Record<string, string> = {
-  adminRole:   "bg-blue-50 text-blue-700 border-blue-200",
-  teacherRole: "bg-violet-50 text-violet-700 border-violet-200",
-  userRole:    "bg-slate-100 text-slate-600 border-slate-200",
-};
-
 function AdminUsersPage() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [banTarget, setBanTarget] = useState<AdminUser | null>(null);
   const [banReason, setBanReason] = useState("");
 
-  const { data, isLoading: loading } = useQuery(adminUsersQuery());
+  const { data, isLoading: loading } = useQuery(adminUsersQuery({ search, page }));
   const users: AdminUser[] = (data as any)?.users ?? [];
+  const total: number = (data as any)?.total ?? 0;
+  const totalPages: number = (data as any)?.totalPages ?? 1;
 
   const roleMutation = useMutation({
     mutationFn: async ({ userId, role }: { userId: string; role: string }) => {
@@ -80,17 +73,19 @@ function AdminUsersPage() {
     onError: () => toast.error("Failed to unban user"),
   });
 
-  const displayed = users.filter((u) => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
-  });
+  function handleSearch(value: string) {
+    setSearch(value);
+    setPage(1);
+  }
+
+  const from = total === 0 ? 0 : (page - 1) * 20 + 1;
+  const to = Math.min(page * 20, total);
 
   const initials = (name: string) =>
     name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
 
   return (
-    <div className="p-8">
+    <div className="p-4 sm:p-8">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-900">Users</h1>
         <p className="text-muted-foreground text-sm mt-0.5">Manage user roles and access</p>
@@ -99,12 +94,12 @@ function AdminUsersPage() {
       <div className="relative max-w-sm mb-5">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
         <Input placeholder="Search by name or email…" value={search}
-          onChange={(e) => setSearch(e.target.value)} className="pl-9 border-slate-200 bg-white" />
+          onChange={(e) => handleSearch(e.target.value)} className="pl-9 border-slate-200 bg-white" />
       </div>
 
       {loading ? (
         <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
-      ) : displayed.length === 0 ? (
+      ) : users.length === 0 ? (
         <div className="text-center py-20 text-muted-foreground">
           <div className="w-14 h-14 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
             <Users className="w-7 h-7 opacity-40" />
@@ -113,7 +108,7 @@ function AdminUsersPage() {
         </div>
       ) : (
         <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto"><table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-50 border-b">
                 {["User", "Email", "Role", "Bookings", "Joined", "Status", "Actions"].map((h) => (
@@ -122,7 +117,7 @@ function AdminUsersPage() {
               </tr>
             </thead>
             <tbody className="divide-y">
-              {displayed.map((u) => {
+              {users.map((u) => {
                 const currentRole = (u.role ?? "userRole") as UserRole;
                 const isRoleActing = roleMutation.isPending && (roleMutation.variables as any)?.userId === u.id;
                 const isBanActing = (banMutation.isPending && (banMutation.variables as any)?.userId === u.id) ||
@@ -195,7 +190,27 @@ function AdminUsersPage() {
                 );
               })}
             </tbody>
-          </table>
+          </table></div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-5 py-3 border-t text-sm">
+              <span className="text-muted-foreground text-xs">
+                {from}–{to} จาก {total} ผู้ใช้
+              </span>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" className="h-7 px-2"
+                  onClick={() => setPage((p) => p - 1)} disabled={page <= 1}>
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                <span className="text-xs text-muted-foreground tabular-nums">หน้า {page}/{totalPages}</span>
+                <Button variant="outline" size="sm" className="h-7 px-2"
+                  onClick={() => setPage((p) => p + 1)} disabled={page >= totalPages}>
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

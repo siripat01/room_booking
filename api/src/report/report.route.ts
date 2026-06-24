@@ -13,28 +13,23 @@ const QUERY = t.Object({
 
 const reportRoutes = new Elysia({ prefix: "/reports" })
     .use(betterAuth)
-    .get("/overview", async ({ user, query, status }) => {
-        if (user.role !== "adminRole") return status(403);
-        return reportService.getOverview(query.from, query.to, query.roomId);
-    }, { auth: true, query: QUERY })
-    .get("/rooms/usage", async ({ user, query, status }) => {
-        if (user.role !== "adminRole") return status(403);
-        return reportService.getRoomUsage(query.from, query.to, query.roomId);
-    }, { auth: true, query: QUERY })
-    .get("/bookings-summary", async ({ user, query, status }) => {
-        if (user.role !== "adminRole") return status(403);
-        return reportService.getBookingsSummary(query.from, query.to, query.roomId);
-    }, { auth: true, query: QUERY })
-    .get("/peak-hours", async ({ user, query, status }) => {
-        if (user.role !== "adminRole") return status(403);
-        return reportService.getPeakHours(query.from, query.to, query.roomId);
-    }, { auth: true, query: QUERY })
-    .get("/users/active", async ({ user, query, status }) => {
-        if (user.role !== "adminRole") return status(403);
-        return reportService.getActiveUsers(query.from, query.to);
-    }, {
-        auth: true,
-        query: t.Object({ from: t.Optional(t.String()), to: t.Optional(t.String()) }),
-    });
+    .guard({ auth: true }, (app) =>
+        app
+            .onBeforeHandle(({ user, status }) => {
+                if (user.role !== "adminRole") return status(403);
+            })
+            .get("/overview", ({ query }) =>
+                reportService.getOverview(query.from, query.to, query.roomId), { query: QUERY })
+            .get("/rooms/usage", ({ query }) =>
+                reportService.getRoomUsage(query.from, query.to, query.roomId), { query: QUERY })
+            .get("/bookings-summary", ({ query }) =>
+                reportService.getBookingsSummary(query.from, query.to, query.roomId), { query: QUERY })
+            .get("/peak-hours", ({ query }) =>
+                reportService.getPeakHours(query.from, query.to, query.roomId), { query: QUERY })
+            .get("/users/active", ({ query }) =>
+                reportService.getActiveUsers(query.from, query.to), {
+                query: t.Object({ from: t.Optional(t.String()), to: t.Optional(t.String()) }),
+            })
+    );
 
 export default reportRoutes;

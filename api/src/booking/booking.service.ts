@@ -1,5 +1,4 @@
 import type { PrismaClient } from "../../generated/prisma/client";
-import prisma from "../../libs/db";
 import { randomBytes } from "crypto";
 
 export class BookingService {
@@ -14,52 +13,98 @@ export class BookingService {
     purpose?: string;
     autoConfirm: boolean;
     approvedBy?: string;
+    userRole?: string;
   }) {
-    const conflict = await this.prisma.booking.findFirst({
-      where: {
-        roomId: data.roomId,
-        status: { in: ["PENDING", "CONFIRMED", "CHECKED_IN"] },
-        AND: [
-          { startTime: { lt: data.endTime } },
-          { endTime: { gt: data.startTime } },
-        ],
-      },
-    });
-    if (conflict) throw new Error("Room already has a booking overlapping this time slot");
+    if (data.startTime < new Date()) throw new Error("Cannot book a room in the past");
 
-    return this.prisma.booking.create({
-      data: {
-        userId: data.userId,
-        roomId: data.roomId,
-        startTime: data.startTime,
-        endTime: data.endTime,
-        attendees: data.attendees,
-        purpose: data.purpose,
-        status: data.autoConfirm ? "CONFIRMED" : "PENDING",
-        approvedAt: data.autoConfirm ? new Date() : undefined,
-        approvedBy: data.autoConfirm ? (data.approvedBy ?? data.userId) : undefined,
+    // Check room's allowed roles
+    const room = await this.prisma.room.findUnique({ where: { id: data.roomId }, select: { allowedRoles: true } });
+    if (room && room.allowedRoles.length > 0 && data.userRole && !room.allowedRoles.includes(data.userRole)) {
+      throw new Error("คุณไม่มีสิทธิ์จองห้องนี้");
+    }
+
+    // Booking limit check (skip for adminRole)
+    if (data.userRole !== "adminRole") {
+      const activeLimit = data.userRole === "teacherRole" ? 5 : 3;
+      const activeCount = await this.prisma.booking.count({
+        where: { userId: data.userId, status: { in: ["PENDING", "CONFIRMED"] } },
+      });
+      if (activeCount >= activeLimit) {
+        throw new Error(
+          `คุณมีการจองที่ยังไม่เสร็จสิ้น ${activeCount} รายการ (สูงสุด ${activeLimit} รายการ) กรุณารอให้การจองก่อนหน้าสิ้นสุดก่อน`,
+        );
+      }
+    }
+
+    // Race-condition-safe conflict check inside a serializable transaction
+    return this.prisma.$transaction(
+      async (tx) => {
+        const conflict = await tx.booking.findFirst({
+          where: {
+            roomId: data.roomId,
+            status: { in: ["PENDING", "CONFIRMED", "CHECKED_IN"] },
+            AND: [{ startTime: { lt: data.endTime } }, { endTime: { gt: data.startTime } }],
+          },
+        });
+        if (conflict) throw new Error("Room already has a booking overlapping this time slot");
+
+        return tx.booking.create({
+          data: {
+            userId: data.userId,
+            roomId: data.roomId,
+            startTime: data.startTime,
+            endTime: data.endTime,
+            attendees: data.attendees,
+            purpose: data.purpose,
+            status: data.autoConfirm ? "CONFIRMED" : "PENDING",
+            approvedAt: data.autoConfirm ? new Date() : undefined,
+            approvedBy: data.autoConfirm ? (data.approvedBy ?? data.userId) : undefined,
+          },
+          include: {
+            room: { select: { name: true, floor: true } },
+            user: { select: { name: true, email: true } },
+          },
+        });
       },
-      include: {
-        room: { select: { name: true, floor: true } },
-        user: { select: { name: true, email: true } },
-      },
+      { isolationLevel: "Serializable" },
+    );
+  }
+
+  private async expireStaleBookings() {
+    await this.prisma.booking.updateMany({
+      where: { status: "CONFIRMED", endTime: { lt: new Date() } },
+      data: { status: "EXPIRED" },
     });
   }
 
-  async getBookings(userId: string, role: string, params?: { status?: string; roomId?: string; userId?: string; date?: string; page?: number; limit?: number }) {
+  async getBookings(userId: string, role: string, params?: { status?: string; roomId?: string; userId?: string; date?: string; page?: number; limit?: number; forSelf?: boolean; search?: string }) {
+    await this.expireStaleBookings();
     const isAdmin = role === "adminRole";
     const page = params?.page ?? 1;
     const limit = params?.limit ?? 20;
     const skip = (page - 1) * limit;
 
-    const where: any = isAdmin ? {} : { userId };
-    if (params?.status) where.status = params.status;
+    // forSelf=true forces filtering by current user regardless of role (used by My Bookings page)
+    const where: any = (isAdmin && !params?.forSelf) ? {} : { userId };
+    if (params?.status) {
+      const statuses = params.status.split(",").map((s) => s.trim()).filter(Boolean);
+      where.status = statuses.length === 1 ? statuses[0] : { in: statuses };
+    }
     if (params?.roomId) where.roomId = params.roomId;
     if (isAdmin && params?.userId) where.userId = params.userId;
     if (params?.date) {
       const start = new Date(`${params.date}T00:00:00.000Z`);
       const end = new Date(`${params.date}T23:59:59.999Z`);
       where.startTime = { gte: start, lte: end };
+    }
+    if (params?.search) {
+      const q = params.search;
+      where.OR = [
+        { room: { name: { contains: q, mode: "insensitive" } } },
+        { user: { name: { contains: q, mode: "insensitive" } } },
+        { user: { email: { contains: q, mode: "insensitive" } } },
+        { purpose: { contains: q, mode: "insensitive" } },
+      ];
     }
 
     const [bookings, total] = await Promise.all([
@@ -143,10 +188,12 @@ export class BookingService {
   }
 
   async generateQr(id: string, userId: string, role: string) {
+    await this.expireStaleBookings();
     const booking = await this.prisma.booking.findUnique({ where: { id } });
     if (!booking) throw new Error("Booking not found");
     if (role !== "adminRole" && booking.userId !== userId) throw new Error("Unauthorized");
     if (booking.status !== "CONFIRMED") throw new Error("Only confirmed bookings can generate a QR code");
+    if (booking.endTime < new Date()) throw new Error("Booking time has already passed");
 
     const qrToken = randomBytes(32).toString("hex");
     const qrExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
