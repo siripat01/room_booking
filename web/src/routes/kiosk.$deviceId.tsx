@@ -241,6 +241,17 @@ function KioskPage() {
   const roomName = status?.device?.room?.name ?? "No Room Assigned";
   const floor = status?.device?.room?.floor;
 
+  // Camera is active only during check-in window: [startTime - 10min, startTime]
+  const checkInWindow = (() => {
+    const next = status?.nextBooking;
+    if (!next) return null;
+    const start = new Date(next.startTime);
+    const opens = new Date(start.getTime() - 10 * 60 * 1000);
+    if (now >= opens && now < start) return { opens, closes: start };
+    return null;
+  })();
+  const cameraActive = !!checkInWindow;
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-950 flex items-center justify-center">
@@ -357,14 +368,31 @@ function KioskPage() {
 
       {/* Camera strip */}
       <div className="border-t border-white/10 h-48 flex">
-        <div className="flex-1 relative">
-          <QRScanner onScan={handleScan} paused={scanPaused} />
-          <div className="absolute bottom-2 left-0 right-0 flex justify-center pointer-events-none">
-            <p className="text-white/30 text-xs">ยื่น QR code ให้กล้อง เพื่อเช็คอิน</p>
-          </div>
+        <div className="flex-1 relative bg-black">
+          {cameraActive ? (
+            <>
+              <QRScanner onScan={handleScan} paused={scanPaused} />
+              <div className="absolute bottom-2 left-0 right-0 flex justify-center pointer-events-none">
+                <p className="text-white/30 text-xs">ยื่น QR code ให้กล้อง เพื่อเช็คอิน</p>
+              </div>
+            </>
+          ) : (
+            <div className="w-full h-full flex flex-col items-center justify-center gap-1">
+              {status?.nextBooking ? (
+                <>
+                  <p className="text-gray-600 text-xs">กล้องจะเปิดเมื่อถึงเวลาเช็คอิน</p>
+                  <p className="text-gray-500 text-sm font-medium">
+                    {fmt(new Date(new Date(status.nextBooking.startTime).getTime() - 10 * 60 * 1000).toISOString())} น.
+                  </p>
+                </>
+              ) : (
+                <p className="text-gray-700 text-xs">ไม่มีการจองในวันนี้</p>
+              )}
+            </div>
+          )}
         </div>
         <div className="flex items-center px-6 border-l border-white/10">
-          <p className="text-xs text-gray-700 writing-mode-vertical whitespace-nowrap">
+          <p className="text-xs text-gray-700 whitespace-nowrap" style={{ writingMode: "vertical-rl" }}>
             Room Booking Kiosk · {status?.device?.name ?? deviceId}
           </p>
         </div>
