@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState, useCallback } from "react";
 import jsQR from "jsqr";
-import { Camera, X, CheckCircle, XCircle, RefreshCw } from "lucide-react";
+import { RefreshCw, CheckCircle, XCircle } from "lucide-react";
 
 export const Route = createFileRoute("/kiosk/$deviceId")({
   component: KioskPage,
@@ -54,14 +54,17 @@ async function kioskFetch(path: string, deviceKey: string, options?: RequestInit
   });
 }
 
-// ── QR Scanner ────────────────────────────────────────────────────────────────
+// ── QR Scanner (always-on strip) ──────────────────────────────────────────────
 
-function QRScanner({ onScan, onClose }: { onScan: (token: string) => void; onClose: () => void }) {
+function QRScanner({ onScan, paused }: { onScan: (token: string) => void; paused: boolean }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number>(0);
+  const pausedRef = useRef(paused);
   const [error, setError] = useState("");
+
+  useEffect(() => { pausedRef.current = paused; }, [paused]);
 
   useEffect(() => {
     let active = true;
@@ -79,7 +82,7 @@ function QRScanner({ onScan, onClose }: { onScan: (token: string) => void; onClo
         }
         scan();
       } catch {
-        setError("Cannot access camera. Please allow camera access.");
+        setError("ไม่สามารถเข้าถึงกล้องได้ กรุณาอนุญาตการใช้งานกล้อง");
       }
     }
 
@@ -91,15 +94,18 @@ function QRScanner({ onScan, onClose }: { onScan: (token: string) => void; onClo
         rafRef.current = requestAnimationFrame(scan);
         return;
       }
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext("2d")!;
-      ctx.drawImage(video, 0, 0);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const result = jsQR(imageData.data, imageData.width, imageData.height);
-      if (result?.data) {
-        onScan(result.data);
-        return;
+      if (!pausedRef.current) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext("2d")!;
+        ctx.drawImage(video, 0, 0);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const result = jsQR(imageData.data, imageData.width, imageData.height);
+        if (result?.data) {
+          onScan(result.data);
+          rafRef.current = requestAnimationFrame(scan);
+          return;
+        }
       }
       rafRef.current = requestAnimationFrame(scan);
     }
@@ -114,34 +120,23 @@ function QRScanner({ onScan, onClose }: { onScan: (token: string) => void; onClo
   }, [onScan]);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col">
-      <div className="flex items-center justify-between px-6 py-4">
-        <span className="text-white font-semibold text-lg">Scan QR Code</span>
-        <button onClick={onClose} className="text-white/70 hover:text-white">
-          <X className="w-7 h-7" />
-        </button>
-      </div>
-
-      <div className="flex-1 relative">
-        <video ref={videoRef} className="w-full h-full object-cover" playsInline muted />
-        <canvas ref={canvasRef} className="hidden" />
-        {/* Finder overlay */}
-        <div className="absolute inset-0 flex items-center justify-center">
-          <div className="w-64 h-64 border-2 border-white/80 rounded-2xl relative">
-            <span className="absolute -top-1 -left-1 w-6 h-6 border-t-4 border-l-4 border-blue-400 rounded-tl-xl" />
-            <span className="absolute -top-1 -right-1 w-6 h-6 border-t-4 border-r-4 border-blue-400 rounded-tr-xl" />
-            <span className="absolute -bottom-1 -left-1 w-6 h-6 border-b-4 border-l-4 border-blue-400 rounded-bl-xl" />
-            <span className="absolute -bottom-1 -right-1 w-6 h-6 border-b-4 border-r-4 border-blue-400 rounded-br-xl" />
-          </div>
+    <div className="relative w-full h-full bg-black overflow-hidden">
+      <video ref={videoRef} className="w-full h-full object-cover" playsInline muted />
+      <canvas ref={canvasRef} className="hidden" />
+      {/* Viewfinder */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <div className="w-32 h-32 border border-white/50 rounded-xl relative">
+          <span className="absolute -top-0.5 -left-0.5 w-4 h-4 border-t-2 border-l-2 border-blue-400 rounded-tl-lg" />
+          <span className="absolute -top-0.5 -right-0.5 w-4 h-4 border-t-2 border-r-2 border-blue-400 rounded-tr-lg" />
+          <span className="absolute -bottom-0.5 -left-0.5 w-4 h-4 border-b-2 border-l-2 border-blue-400 rounded-bl-lg" />
+          <span className="absolute -bottom-0.5 -right-0.5 w-4 h-4 border-b-2 border-r-2 border-blue-400 rounded-br-lg" />
         </div>
-        {error && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/80">
-            <p className="text-red-400 text-center px-8">{error}</p>
-          </div>
-        )}
       </div>
-
-      <p className="text-white/50 text-sm text-center py-4">Point camera at the QR code on your booking confirmation</p>
+      {error && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/80">
+          <p className="text-red-400 text-center px-4 text-xs">{error}</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -156,9 +151,10 @@ function KioskPage() {
   const [status, setStatus] = useState<DeviceStatus | null>(null);
   const [schedule, setSchedule] = useState<DeviceSchedule | null>(null);
   const [now, setNow] = useState(new Date());
-  const [scanning, setScanning] = useState(false);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [loading, setLoading] = useState(true);
+  const [scanPaused, setScanPaused] = useState(false);
+  const cooldownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Clock tick
   useEffect(() => {
@@ -217,8 +213,8 @@ function KioskPage() {
   }, [deviceId, deviceKey]);
 
   const handleScan = useCallback(async (token: string) => {
-    setScanning(false);
     if (!deviceKey) return;
+    setScanPaused(true);
     try {
       const res = await kioskFetch(`/devices/${deviceId}/scan`, deviceKey, {
         method: "POST",
@@ -226,20 +222,35 @@ function KioskPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setScanResult({ ok: false, message: data.message || "Check-in failed" });
+        setScanResult({ ok: false, message: data.message || "Check-in ล้มเหลว" });
       } else {
-        setScanResult({ ok: true, message: `Check-in successful! Welcome, ${data.user?.name ?? ""}` });
+        setScanResult({ ok: true, message: `เช็คอินสำเร็จ! ยินดีต้อนรับ ${data.user?.name ?? ""}` });
         fetchData();
       }
     } catch {
-      setScanResult({ ok: false, message: "Network error. Please try again." });
+      setScanResult({ ok: false, message: "เกิดข้อผิดพลาด กรุณาลองใหม่" });
     }
     setTimeout(() => setScanResult(null), 4000);
+    // 3-second cooldown before scanning again
+    cooldownRef.current = setTimeout(() => setScanPaused(false), 3000);
   }, [deviceId, deviceKey, fetchData]);
+
+  useEffect(() => () => { if (cooldownRef.current) clearTimeout(cooldownRef.current); }, []);
 
   const isOccupied = !!status?.currentBooking;
   const roomName = status?.device?.room?.name ?? "No Room Assigned";
   const floor = status?.device?.room?.floor;
+
+  // Camera is active only during check-in window: [startTime - 10min, startTime]
+  const checkInWindow = (() => {
+    const next = status?.nextBooking;
+    if (!next) return null;
+    const start = new Date(next.startTime);
+    const opens = new Date(start.getTime() - 10 * 60 * 1000);
+    if (now >= opens && now < start) return { opens, closes: start };
+    return null;
+  })();
+  const cameraActive = !!checkInWindow;
 
   if (loading) {
     return (
@@ -251,9 +262,6 @@ function KioskPage() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col select-none overflow-hidden">
-      {/* QR Scanner overlay */}
-      {scanning && <QRScanner onScan={handleScan} onClose={() => setScanning(false)} />}
-
       {/* Scan result toast */}
       {scanResult && (
         <div className={`fixed top-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl text-sm font-medium ${scanResult.ok ? "bg-green-600" : "bg-red-600"}`}>
@@ -358,16 +366,36 @@ function KioskPage() {
         </div>
       </div>
 
-      {/* Footer */}
-      <div className="border-t border-white/10 px-8 py-5 flex items-center justify-between">
-        <p className="text-xs text-gray-700">Room Booking Kiosk · {status?.device?.name ?? deviceId}</p>
-        <button
-          onClick={() => setScanning(true)}
-          className="flex items-center gap-2.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-semibold px-6 py-3 rounded-xl transition-colors"
-        >
-          <Camera className="w-5 h-5" />
-          สแกน QR เช็คอิน
-        </button>
+      {/* Camera strip */}
+      <div className="border-t border-white/10 h-48 flex">
+        <div className="flex-1 relative bg-black">
+          {cameraActive ? (
+            <>
+              <QRScanner onScan={handleScan} paused={scanPaused} />
+              <div className="absolute bottom-2 left-0 right-0 flex justify-center pointer-events-none">
+                <p className="text-white/30 text-xs">ยื่น QR code ให้กล้อง เพื่อเช็คอิน</p>
+              </div>
+            </>
+          ) : (
+            <div className="w-full h-full flex flex-col items-center justify-center gap-1">
+              {status?.nextBooking ? (
+                <>
+                  <p className="text-gray-600 text-xs">กล้องจะเปิดเมื่อถึงเวลาเช็คอิน</p>
+                  <p className="text-gray-500 text-sm font-medium">
+                    {fmt(new Date(new Date(status.nextBooking.startTime).getTime() - 10 * 60 * 1000).toISOString())} น.
+                  </p>
+                </>
+              ) : (
+                <p className="text-gray-700 text-xs">ไม่มีการจองในวันนี้</p>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="flex items-center px-6 border-l border-white/10">
+          <p className="text-xs text-gray-700 whitespace-nowrap" style={{ writingMode: "vertical-rl" }}>
+            Room Booking Kiosk · {status?.device?.name ?? deviceId}
+          </p>
+        </div>
       </div>
     </div>
   );
