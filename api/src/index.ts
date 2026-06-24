@@ -1,4 +1,4 @@
-import { Elysia, Context } from "elysia";
+import { Elysia } from "elysia";
 import { cors } from "@elysiajs/cors";
 import { openapi } from "@elysia/openapi";
 import { OpenAPI } from "../libs/auth";

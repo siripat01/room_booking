@@ -1,5 +1,4 @@
 import type { PrismaClient } from "../../generated/prisma/client";
-import prisma from "../../libs/db";
 import { randomBytes } from "crypto";
 
 export class BookingService {

@@ -23,7 +23,7 @@ export class DeviceService {
             });
             return { device, deviceKey };
         } catch (e) {
-            console.log(e);
+            console.error(e);
             throw new Error("Failed to create device");
         }
     }
@@ -36,7 +36,7 @@ export class DeviceService {
                 take: 200,
             });
         } catch (e) {
-            console.log(e);
+            console.error(e);
             throw new Error("Failed to get all devices");
         }
     }
@@ -48,7 +48,7 @@ export class DeviceService {
                 include: { room: true },
             });
         } catch (e) {
-            console.log(e);
+            console.error(e);
             throw new Error("Failed to get device");
         }
     }
@@ -61,7 +61,7 @@ export class DeviceService {
                 include: { room: true },
             });
         } catch (e) {
-            console.log(e);
+            console.error(e);
             throw new Error("Failed to update device");
         }
     }
@@ -70,7 +70,7 @@ export class DeviceService {
         try {
             return await this.prisma.device.delete({ where: { id } });
         } catch (e) {
-            console.log(e);
+            console.error(e);
             throw new Error("Failed to delete device");
         }
     }
@@ -84,7 +84,7 @@ export class DeviceService {
             });
             return { deviceKey };
         } catch (e) {
-            console.log(e);
+            console.error(e);
             throw new Error("Failed to rotate device key");
         }
     }
