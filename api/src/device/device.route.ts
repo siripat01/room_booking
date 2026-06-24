@@ -3,6 +3,20 @@ import { DeviceService } from "./device.service";
 import { betterAuth } from "../middleware/auth.middleware";
 import prisma from "../../libs/db";
 
+// In-memory rate limiter for /devices/pair: max 10 attempts per IP per 5 minutes
+const pairAttempts = new Map<string, { count: number; resetAt: number }>();
+function checkPairRateLimit(ip: string): boolean {
+    const now = Date.now();
+    const entry = pairAttempts.get(ip);
+    if (!entry || entry.resetAt < now) {
+        pairAttempts.set(ip, { count: 1, resetAt: now + 5 * 60 * 1000 });
+        return true;
+    }
+    if (entry.count >= 10) return false;
+    entry.count++;
+    return true;
+}
+
 const deviceService = new DeviceService(prisma);
 
 export const deviceRoutes = new Elysia()
@@ -36,7 +50,9 @@ export const deviceRoutes = new Elysia()
     )
 
     // ── Pairing (public) ──────────────────────────────────────────────────────
-    .post("/devices/pair", async ({ body, status }) => {
+    .post("/devices/pair", async ({ body, status, request }) => {
+        const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+        if (!checkPairRateLimit(ip)) return status(429, { error: "Too many attempts. Please wait 5 minutes." });
         try {
             return await deviceService.pairDevice(body.code);
         } catch (e: any) {

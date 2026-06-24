@@ -35,8 +35,8 @@ function PairPage() {
       }
 
       const { deviceId, deviceKey } = await res.json();
-      localStorage.setItem("kiosk_device_id", deviceId);
-      localStorage.setItem("kiosk_device_key", deviceKey);
+      sessionStorage.setItem("kiosk_device_id", deviceId);
+      sessionStorage.setItem("kiosk_device_key", deviceKey);
 
       navigate({ to: "/kiosk/$deviceId", params: { deviceId } });
     } catch (e: any) {

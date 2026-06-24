@@ -17,7 +17,7 @@ const app = new Elysia({ prefix: "/api" })
         ? (process.env.FRONTEND_URL || "http://localhost:3001")
         : true,
       credentials: true,
-      allowedHeaders: ["Content-Type", "Authorization"],
+      allowedHeaders: ["Content-Type", "Authorization", "X-Device-Key"],
       methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     }),
   )

@@ -1,5 +1,5 @@
 import type { PrismaClient } from "../../generated/prisma/client";
-import { randomBytes } from "crypto";
+import { randomBytes, timingSafeEqual } from "crypto";
 
 export class BookingService {
   constructor(private readonly prisma: PrismaClient) {}
@@ -206,12 +206,15 @@ export class BookingService {
     return { qrToken, expiresAt: qrExpiresAt };
   }
 
-  async checkIn(id: string, qrToken: string) {
+  async checkIn(id: string, qrToken: string, userId: string, role: string) {
     const booking = await this.prisma.booking.findUnique({ where: { id } });
     if (!booking) throw new Error("Booking not found");
+    if (role !== "adminRole" && booking.userId !== userId) throw new Error("Unauthorized");
     if (booking.status !== "CONFIRMED") throw new Error("Booking is not confirmed");
-    if (booking.qrToken !== qrToken) throw new Error("Invalid QR token");
-    if (!booking.qrExpiresAt || booking.qrExpiresAt < new Date()) throw new Error("QR token has expired");
+    if (!booking.qrToken || !booking.qrExpiresAt || booking.qrExpiresAt < new Date()) throw new Error("QR token has expired");
+    const stored = Buffer.from(booking.qrToken);
+    const provided = Buffer.from(qrToken.padEnd(booking.qrToken.length, "\0").slice(0, booking.qrToken.length));
+    if (stored.length !== provided.length || !timingSafeEqual(stored, provided)) throw new Error("Invalid QR token");
 
     return this.prisma.booking.update({
       where: { id },

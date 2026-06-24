@@ -35,6 +35,30 @@
   --color-sidebar-ring: oklch(0.87 0 0 / 1);
 }
 
+/* ── Kiosk animations ──────────────────────────────────────────────────────── */
+
+@keyframes kiosk-slide-down {
+  from { opacity: 0; transform: translateY(-16px) translateX(-50%); }
+  to   { opacity: 1; transform: translateY(0)     translateX(-50%); }
+}
+@keyframes kiosk-slide-up {
+  from { opacity: 1; transform: translateY(0)     translateX(-50%); }
+  to   { opacity: 0; transform: translateY(-16px) translateX(-50%); }
+}
+@keyframes kiosk-scan-line {
+  0%, 100% { top: 6px;              opacity: 0.9; }
+  50%       { top: calc(100% - 6px); opacity: 0.3; }
+}
+@keyframes kiosk-fade-slide-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.kiosk-toast-enter { animation: kiosk-slide-down 0.3s ease-out forwards; }
+.kiosk-toast-exit  { animation: kiosk-slide-up   0.2s ease-in  forwards; }
+.kiosk-scan-line   { animation: kiosk-scan-line  2s ease-in-out infinite; position: absolute; left: 6px; right: 6px; height: 1px; background: rgb(96 165 250); box-shadow: 0 0 6px rgb(96 165 250 / 0.8); pointer-events: none; }
+.kiosk-card-in     { animation: kiosk-fade-slide-in 0.4s ease-out both; }
+
 @layer base {
   :root {
     --background: oklch(1 0 0 / 1);
