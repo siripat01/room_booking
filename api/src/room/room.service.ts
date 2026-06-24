@@ -1,5 +1,4 @@
 import type { PrismaClient } from "../../generated/prisma/client";
-import prisma from "../../libs/db";
 import type { CreateRoomInput } from "../../type/room";
 
 export class RoomService {
@@ -50,7 +49,7 @@ export class RoomService {
                 include: { timeSlots: true },
             });
         } catch (e) {
-            console.log(e);
+            console.error(e);
             throw new Error("Failed to get room");
         }
     }
@@ -59,7 +58,7 @@ export class RoomService {
         try {
             return await this.prisma.room.create({ data });
         } catch (e) {
-            console.log(e);
+            console.error(e);
             throw new Error("Failed to create room");
         }
     }
@@ -68,7 +67,7 @@ export class RoomService {
         try {
             return await this.prisma.room.update({ where: { id }, data });
         } catch (e) {
-            console.log(e);
+            console.error(e);
             throw new Error("Failed to update room");
         }
     }
@@ -80,7 +79,7 @@ export class RoomService {
                 data: { isActive: false },
             });
         } catch (e) {
-            console.log(e);
+            console.error(e);
             throw new Error("Failed to delete room");
         }
     }
@@ -108,7 +107,7 @@ export class RoomService {
                 take: 50,
             });
         } catch (e) {
-            console.log(e);
+            console.error(e);
             throw new Error("Failed to get room schedule");
         }
     }

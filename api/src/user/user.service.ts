@@ -1,5 +1,4 @@
 import type { PrismaClient } from "../../generated/prisma/client";
-import prisma from "../../libs/db";
 
 const USER_SELECT = {
   id: true,

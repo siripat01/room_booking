@@ -7,51 +7,35 @@ const deviceService = new DeviceService(prisma);
 
 export const deviceRoutes = new Elysia()
     .use(betterAuth)
-    .get("/devices", async ({ user, status }) => {
-        if (user.role !== "adminRole") return status(403);
-        return await deviceService.getAllDevices();
-    }, { auth: true })
-    .get("/devices/:id", async ({ user, params: { id }, status }) => {
-        if (user.role !== "adminRole") return status(403);
-        return await deviceService.getDeviceById(id);
-    }, { auth: true })
-    .post("/devices", async ({ user, body, status }) => {
-        if (user.role !== "adminRole") return status(403);
-        return await deviceService.createDevice(body);
-    }, {
-        auth: true,
-        body: t.Object({
-            name: t.String(),
-            roomId: t.Optional(t.Nullable(t.String())),
-            isActive: t.Optional(t.Boolean()),
-        }),
-    })
-    .put("/devices/:id", async ({ user, params: { id }, body, status }) => {
-        if (user.role !== "adminRole") return status(403);
-        return await deviceService.updateDevice(id, body);
-    }, {
-        auth: true,
-        body: t.Object({
-            name: t.Optional(t.String()),
-            roomId: t.Optional(t.Nullable(t.String())),
-            isActive: t.Optional(t.Boolean()),
-        }),
-    })
-    .post("/devices/:id/rotate-key", async ({ user, params: { id }, status }) => {
-        if (user.role !== "adminRole") return status(403);
-        return await deviceService.rotateDeviceKey(id);
-    }, { auth: true })
-    .delete("/devices/:id", async ({ user, params: { id }, status }) => {
-        if (user.role !== "adminRole") return status(403);
-        return await deviceService.deleteDevice(id);
-    }, { auth: true })
 
-    // ── Pairing ───────────────────────────────────────────────────────────────
-    .post("/devices/:id/generate-pairing", async ({ user, params: { id }, status }) => {
-        if (user.role !== "adminRole") return status(403);
-        return await deviceService.generatePairingCode(id);
-    }, { auth: true })
+    // ── Admin-only routes ─────────────────────────────────────────────────────
+    .guard({ auth: true }, (app) =>
+        app
+            .onBeforeHandle(({ user, status }) => {
+                if (user.role !== "adminRole") return status(403);
+            })
+            .get("/devices", () => deviceService.getAllDevices())
+            .get("/devices/:id", ({ params: { id } }) => deviceService.getDeviceById(id))
+            .post("/devices", ({ body }) => deviceService.createDevice(body), {
+                body: t.Object({
+                    name: t.String(),
+                    roomId: t.Optional(t.Nullable(t.String())),
+                    isActive: t.Optional(t.Boolean()),
+                }),
+            })
+            .put("/devices/:id", ({ params: { id }, body }) => deviceService.updateDevice(id, body), {
+                body: t.Object({
+                    name: t.Optional(t.String()),
+                    roomId: t.Optional(t.Nullable(t.String())),
+                    isActive: t.Optional(t.Boolean()),
+                }),
+            })
+            .post("/devices/:id/rotate-key", ({ params: { id } }) => deviceService.rotateDeviceKey(id))
+            .delete("/devices/:id", ({ params: { id } }) => deviceService.deleteDevice(id))
+            .post("/devices/:id/generate-pairing", ({ params: { id } }) => deviceService.generatePairingCode(id))
+    )
 
+    // ── Pairing (public) ──────────────────────────────────────────────────────
     .post("/devices/pair", async ({ body, status }) => {
         try {
             return await deviceService.pairDevice(body.code);
