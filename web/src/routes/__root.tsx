@@ -23,17 +23,17 @@ function Providers({ queryClient, children }: { queryClient: QueryClient; childr
 export const Route = createRootRouteWithContext<RouterContext>()({
   pendingComponent: LoadingPage,
   pendingMs: 200,
-  beforeLoad: async ({ context: { queryClient }, location }) => {
+  beforeLoad: ({ context: { queryClient }, location }) => {
     if (typeof window === "undefined") return;
     const publicPaths = ["/", "/banned", "/auth-error"];
     if (publicPaths.includes(location.pathname)) return;
-    try {
-      const user = await queryClient.ensureQueryData(sessionQuery());
-      if (user?.banned) {
-        throw redirect({ to: "/banned", search: { reason: user.banReason ?? "" } });
-      }
-    } catch (e: any) {
-      if (e?.isRedirect) throw e;
+    // Prefetch in background — non-blocking. Uses cached data if fresh (5 min staleTime).
+    queryClient.prefetchQuery(sessionQuery());
+    const user = queryClient.getQueryData<Awaited<ReturnType<ReturnType<typeof sessionQuery>["queryFn"]>>>(
+      sessionQuery().queryKey,
+    );
+    if (user?.banned) {
+      throw redirect({ to: "/banned", search: { reason: user.banReason ?? "" } });
     }
   },
   component: RootComponent,

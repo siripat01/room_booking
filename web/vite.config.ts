@@ -15,4 +15,16 @@ export default defineConfig({
     TanStackRouterVite(),
     viteReact(),
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "vendor-react":  ["react", "react-dom"],
+          "vendor-query":  ["@tanstack/react-query", "@tanstack/react-router"],
+          "vendor-charts": ["recharts"],
+          "vendor-ui":     ["lucide-react"],
+        },
+      },
+    },
+  },
 });

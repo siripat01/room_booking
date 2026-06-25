@@ -68,7 +68,7 @@ function BookingsPage() {
     isFetchingNextPage,
     isLoading: loading,
   } = useInfiniteQuery({
-    queryKey: ["bookings", "list"],
+    queryKey: ["bookings", "list", activeTab],
     initialPageParam: 1,
     queryFn: async ({ pageParam }) => {
       const { data, error } = await (app.api.bookings as any).get({
@@ -90,7 +90,7 @@ function BookingsPage() {
       if (error) throw error;
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["bookings", "list"] });
+      qc.invalidateQueries({ queryKey: ["bookings", "list", activeTab] });
       toast.success("Booking cancelled.");
     },
     onError: () => toast.error("Could not cancel booking."),
