@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   adminStatsQuery,
@@ -83,13 +84,20 @@ function AdminDashboard() {
 
   const displayStats = stats ?? { totalRooms: 0, pendingBookings: 0, totalUsers: 0, confirmedToday: 0 };
 
-  // chart data
-  const dailyData = summary?.daily?.slice(-14) ?? [];
-  const popularRoomsData = (overview?.popularRooms ?? []).map((r) => ({
-    name: r.room?.name?.replace(/^(Conference |Meeting |Training |Focus |Board )/i, "").slice(0, 14) ?? "Room",
-    bookings: r.bookingCount,
-  }));
-  const peakData = (peakHours ?? []).filter((h) => h.hour >= 7 && h.hour <= 20);
+  // chart data — memoized to avoid recomputation on every render
+  const dailyData = useMemo(() => summary?.daily?.slice(-14) ?? [], [summary]);
+  const popularRoomsData = useMemo(
+    () =>
+      (overview?.popularRooms ?? []).map((r) => ({
+        name: r.room?.name?.replace(/^(Conference |Meeting |Training |Focus |Board )/i, "").slice(0, 14) ?? "Room",
+        bookings: r.bookingCount,
+      })),
+    [overview],
+  );
+  const peakData = useMemo(
+    () => (peakHours ?? []).filter((h) => h.hour >= 7 && h.hour <= 20),
+    [peakHours],
+  );
 
   return (
     <div className="p-8 space-y-8">
