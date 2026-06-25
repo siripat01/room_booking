@@ -13,6 +13,7 @@ import {
   CalendarDays, Clock, Users, Loader2,
   XCircle, CheckCircle2, AlertCircle, Timer, MapPin, QrCode,
 } from "lucide-react";
+import { LoadingCentered } from "../components/LoadingSpinner";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/bookings")({
@@ -153,10 +154,8 @@ function BookingsPage() {
 
         {/* Booking list */}
         {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-          </div>
-        ) : displayed.length === 0 ? (
+          <LoadingCentered />
+        ) :displayed.length === 0 ? (
           <div className="text-center py-20 text-muted-foreground">
             <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
               <CalendarDays className="w-8 h-8 opacity-40" />

@@ -12,6 +12,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "../../components/ui/dialog";
 import { CalendarDays, Clock, Users, CheckCircle2, XCircle, Loader2, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { LoadingCentered } from "../../components/LoadingSpinner";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/bookings")({
@@ -143,7 +144,7 @@ function AdminBookingsPage() {
         </div>
 
         {loading ? (
-          <div className="flex justify-center py-20"><Loader2 className="w-6 h-6 animate-spin text-muted-foreground" /></div>
+          <LoadingCentered />
         ) : displayed.length === 0 ? (
           <div className="text-center py-16 text-muted-foreground">
             <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">

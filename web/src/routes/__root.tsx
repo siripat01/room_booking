@@ -4,6 +4,7 @@ import { Outlet, createRootRouteWithContext, redirect } from "@tanstack/react-ro
 import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 import { ErrorPage } from "../components/ErrorPage";
+import { LoadingPage } from "../components/LoadingPage";
 import { sessionQuery } from "../lib/queries";
 
 interface RouterContext {
@@ -20,6 +21,8 @@ function Providers({ queryClient, children }: { queryClient: QueryClient; childr
 }
 
 export const Route = createRootRouteWithContext<RouterContext>()({
+  pendingComponent: LoadingPage,
+  pendingMs: 200,
   beforeLoad: async ({ context: { queryClient }, location }) => {
     if (typeof window === "undefined") return;
     const publicPaths = ["/", "/banned", "/auth-error"];

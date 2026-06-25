@@ -8,6 +8,7 @@ import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../../components/ui/dialog";
 import { Cpu, Plus, Loader2, Smartphone, Copy, Check } from "lucide-react";
+import { LoadingCentered } from "../../components/LoadingSpinner";
 import { toast } from "sonner";
 import { DeviceFormModal } from "../../components/devices/DeviceFormModal";
 import { DeviceDetailSheet } from "../../components/devices/DeviceDetailSheet";
@@ -207,10 +208,8 @@ function AdminDevicesPage() {
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-20">
-          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-        </div>
-      ) : devices.length === 0 ? (
+        <LoadingCentered />
+      ) :devices.length === 0 ? (
         <div className="text-center py-20 text-muted-foreground">
           <Cpu className="w-10 h-10 mx-auto mb-2 opacity-30" />
           <p className="text-sm mb-3">No kiosks yet</p>

@@ -12,6 +12,7 @@ import {
   Mail, Shield, LogOut, CalendarDays, Loader2,
   CheckCircle2, Clock, XCircle,
 } from "lucide-react";
+import { LoadingCentered } from "../components/LoadingSpinner";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/profile")({
@@ -66,9 +67,7 @@ function ProfilePage() {
     return (
       <div className="min-h-screen bg-slate-50">
         <Navbar user={null} />
-        <div className="flex items-center justify-center h-[60vh]">
-          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-        </div>
+        <LoadingCentered />
       </div>
     );
   }

@@ -16,6 +16,7 @@ import {
   ArrowLeft, Building2, Users, Monitor, PenSquare, Tv, Wind, Wifi,
   CalendarDays, Clock, CheckCircle2, Timer, Loader2, MapPin,
 } from "lucide-react";
+import { LoadingCentered } from "../components/LoadingSpinner";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/rooms/$roomId")({
@@ -149,9 +150,7 @@ function RoomDetailPage() {
     return (
       <div className="min-h-screen bg-slate-50">
         <Navbar user={user} />
-        <div className="flex items-center justify-center h-[60vh]">
-          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-        </div>
+        <LoadingCentered />
       </div>
     );
   }
