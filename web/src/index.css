@@ -35,6 +35,27 @@
   --color-sidebar-ring: oklch(0.87 0 0 / 1);
 }
 
+/* ── Loading page animations ───────────────────────────────────────────────── */
+
+@keyframes loading-shimmer {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(400%); }
+}
+@keyframes loading-dot {
+  0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); }
+  40%           { opacity: 1;   transform: scale(1); }
+}
+
+.loading-shimmer { animation: loading-shimmer 1.4s ease-in-out infinite; }
+
+.loading-dots { display: inline-flex; gap: 3px; align-items: center; }
+.loading-dots span {
+  display: block; width: 5px; height: 5px; border-radius: 50%;
+  background: currentColor; animation: loading-dot 1.2s ease-in-out infinite;
+}
+.loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+.loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+
 /* ── Kiosk animations ──────────────────────────────────────────────────────── */
 
 @keyframes kiosk-slide-down {
