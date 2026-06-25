@@ -9,6 +9,7 @@ import bookingRoutes from "./booking/booking.route";
 import userRoutes from "./user/user.route";
 import { deviceRoutes } from "./device/device.route";
 import reportRoutes from "./report/report.route";
+import { startCronJobs } from "./cron/index";
 
 const app = new Elysia({ prefix: "/api" })
   .use(
@@ -39,6 +40,8 @@ const app = new Elysia({ prefix: "/api" })
   .all("/health", () => "Healthy as fuck")
   .all("/version", () => process.env.APP_VERSION)
   .listen(3000);
+
+startCronJobs();
 
 export type App = typeof app;
 

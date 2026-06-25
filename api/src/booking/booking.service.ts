@@ -1,5 +1,6 @@
 import type { PrismaClient } from "../../generated/prisma/client";
 import { randomBytes, timingSafeEqual } from "crypto";
+import { sendBookingApproved, sendBookingRejected } from "../lib/email";
 
 export class BookingService {
   constructor(private readonly prisma: PrismaClient) {}
@@ -155,7 +156,7 @@ export class BookingService {
     if (!booking) throw new Error("Booking not found");
     if (booking.status !== "PENDING") throw new Error("Only pending bookings can be approved");
 
-    return this.prisma.booking.update({
+    const updated = await this.prisma.booking.update({
       where: { id },
       data: { status: "CONFIRMED", approvedAt: new Date(), approvedBy: adminId },
       include: {
@@ -163,6 +164,16 @@ export class BookingService {
         user: { select: { name: true, email: true } },
       },
     });
+    sendBookingApproved({
+      userEmail: updated.user.email,
+      userName: updated.user.name,
+      roomName: updated.room.name,
+      roomFloor: updated.room.floor,
+      startTime: updated.startTime,
+      endTime: updated.endTime,
+      purpose: updated.purpose,
+    });
+    return updated;
   }
 
   async rejectBooking(id: string, adminId: string, reason: string) {
@@ -170,7 +181,7 @@ export class BookingService {
     if (!booking) throw new Error("Booking not found");
     if (booking.status !== "PENDING") throw new Error("Only pending bookings can be rejected");
 
-    return this.prisma.booking.update({
+    const updated = await this.prisma.booking.update({
       where: { id },
       data: { status: "REJECTED", rejectedReason: reason },
       include: {
@@ -178,6 +189,17 @@ export class BookingService {
         user: { select: { name: true, email: true } },
       },
     });
+    sendBookingRejected({
+      userEmail: updated.user.email,
+      userName: updated.user.name,
+      roomName: updated.room.name,
+      roomFloor: updated.room.floor,
+      startTime: updated.startTime,
+      endTime: updated.endTime,
+      purpose: updated.purpose,
+      reason,
+    });
+    return updated;
   }
 
   async forceDeleteBooking(id: string) {

@@ -168,6 +168,7 @@ export type Room = {
   amenities: string[];
   allowedRoles: string[];
   isActive: boolean;
+  autoApprove: boolean;
 };
 
 export type RoomAvailability = {

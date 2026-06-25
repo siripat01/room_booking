@@ -53,7 +53,8 @@ const bookingRoutes = new Elysia({ prefix: "/bookings" })
     .post(
         "/",
         async ({ user, body }) => {
-            const autoConfirm = ["teacherRole", "adminRole"].includes(user.role ?? "");
+            const room = await prisma.room.findUniqueOrThrow({ where: { id: body.roomId }, select: { autoApprove: true } });
+            const autoConfirm = room.autoApprove || ["teacherRole", "adminRole"].includes(user.role ?? "");
             return bookingService.createBooking({
                 userId: user.id,
                 roomId: body.roomId,

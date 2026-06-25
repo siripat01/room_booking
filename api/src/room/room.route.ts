@@ -47,7 +47,7 @@ const roomRoutes = new Elysia()
                 if (user.role !== "adminRole") return status(403);
             })
             .post("/rooms", ({ body }) =>
-                roomService.createRoom({ ...body, amenities: body.amenities ?? [], allowedRoles: body.allowedRoles ?? [] }), {
+                roomService.createRoom({ ...body, amenities: body.amenities ?? [], allowedRoles: body.allowedRoles ?? [], autoApprove: body.autoApprove ?? false }), {
                 body: t.Object({
                     name: t.String(),
                     description: t.Optional(t.String()),
@@ -55,6 +55,7 @@ const roomRoutes = new Elysia()
                     floor: t.String(),
                     amenities: t.Optional(t.Array(t.String())),
                     allowedRoles: t.Optional(t.Array(t.String())),
+                    autoApprove: t.Optional(t.Boolean()),
                 }),
             })
             .put("/rooms/:id", ({ params: { id }, body }) => roomService.updateRoom(id, body), {
@@ -66,6 +67,7 @@ const roomRoutes = new Elysia()
                     amenities: t.Optional(t.Array(t.String())),
                     allowedRoles: t.Optional(t.Array(t.String())),
                     isActive: t.Optional(t.Boolean()),
+                    autoApprove: t.Optional(t.Boolean()),
                 }),
             })
             .delete("/rooms/:id", ({ params: { id } }) => roomService.deleteRoom(id))

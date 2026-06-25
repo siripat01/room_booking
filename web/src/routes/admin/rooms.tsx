@@ -38,7 +38,7 @@ const ROLE_OPTIONS = [
   { value: "adminRole", label: "แอดมิน" },
 ];
 
-const EMPTY_FORM = { name: "", description: "", capacity: "10", floor: "", amenities: [] as string[], allowedRoles: [] as string[] };
+const EMPTY_FORM = { name: "", description: "", capacity: "10", floor: "", amenities: [] as string[], allowedRoles: [] as string[], autoApprove: false };
 
 function AdminRoomsPage() {
   const qc = useQueryClient();
@@ -50,7 +50,7 @@ function AdminRoomsPage() {
   const { data: rooms = [], isLoading: loading } = useQuery(roomsQuery());
 
   const saveMutation = useMutation({
-    mutationFn: async (payload: { name: string; description?: string; capacity: number; floor: string; amenities: string[]; allowedRoles: string[] }) => {
+    mutationFn: async (payload: { name: string; description?: string; capacity: number; floor: string; amenities: string[]; allowedRoles: string[]; autoApprove: boolean }) => {
       if (editTarget) {
         const { error } = await (app.api.rooms as any)[editTarget.id].put(payload);
         if (error) throw error;
@@ -84,7 +84,7 @@ function AdminRoomsPage() {
 
   function openEdit(room: Room) {
     setEditTarget(room);
-    setForm({ name: room.name, description: room.description ?? "", capacity: String(room.capacity), floor: room.floor, amenities: [...room.amenities], allowedRoles: [...(room.allowedRoles ?? [])] });
+    setForm({ name: room.name, description: room.description ?? "", capacity: String(room.capacity), floor: room.floor, amenities: [...room.amenities], allowedRoles: [...(room.allowedRoles ?? [])], autoApprove: room.autoApprove ?? false });
     setModalOpen(true);
   }
 
@@ -98,7 +98,7 @@ function AdminRoomsPage() {
 
   function handleSave() {
     if (!form.name.trim() || !form.floor.trim()) { toast.error("Name and floor are required"); return; }
-    saveMutation.mutate({ name: form.name.trim(), description: form.description.trim() || undefined, capacity: parseInt(form.capacity) || 10, floor: form.floor.trim(), amenities: form.amenities, allowedRoles: form.allowedRoles });
+    saveMutation.mutate({ name: form.name.trim(), description: form.description.trim() || undefined, capacity: parseInt(form.capacity) || 10, floor: form.floor.trim(), amenities: form.amenities, allowedRoles: form.allowedRoles, autoApprove: form.autoApprove });
   }
 
   return (
@@ -128,7 +128,7 @@ function AdminRoomsPage() {
           <div className="overflow-x-auto"><table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-50 border-b">
-                {["Room", "Floor", "Capacity", "Amenities", "จองได้", "Status", "Actions"].map((h) => (
+                {["Room", "Floor", "Capacity", "Amenities", "จองได้", "Auto-approve", "Status", "Actions"].map((h) => (
                   <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">{h}</th>
                 ))}
               </tr>
@@ -166,6 +166,13 @@ function AdminRoomsPage() {
                         </span>
                       ))}
                     </div>
+                  </td>
+                  <td className="px-4 py-3.5">
+                    {room.autoApprove ? (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border bg-emerald-50 text-emerald-700 border-emerald-200">On</span>
+                    ) : (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border bg-slate-100 text-slate-500 border-slate-200">Off</span>
+                    )}
                   </td>
                   <td className="px-4 py-3.5">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${
@@ -244,6 +251,17 @@ function AdminRoomsPage() {
                     </label>
                   ))}
                 </div>
+              </div>
+              <div className="col-span-2">
+                <label className={`flex items-center gap-3 cursor-pointer text-sm px-3 py-2.5 rounded-lg border transition-colors ${
+                  form.autoApprove ? "border-emerald-300 bg-emerald-50 text-emerald-700" : "border-slate-200 hover:border-slate-300"
+                }`}>
+                  <Checkbox checked={form.autoApprove} onCheckedChange={(v) => setForm((f) => ({ ...f, autoApprove: !!v }))} />
+                  <div>
+                    <p className="font-medium">Auto-approve bookings</p>
+                    <p className="text-xs text-muted-foreground">การจองทุกรายการจะได้รับการยืนยันทันที ไม่ต้องรออนุมัติ</p>
+                  </div>
+                </label>
               </div>
             </div>
           </div>
