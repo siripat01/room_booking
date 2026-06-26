@@ -39,6 +39,11 @@ const roomRoutes = new Elysia()
     .get("/rooms/:id/schedule", ({ params: { id } }) => roomService.getRoomSchedule(id), { auth: true })
     .get("/rooms/:id/time-slots", ({ params: { id } }) => roomService.getTimeSlots(id), { auth: true })
     .get("/rooms/:id/closures", ({ params: { id } }) => roomService.getClosures(id), { auth: true })
+    .get("/rooms/:id/calendar", ({ params: { id }, query }) =>
+        roomService.getRoomCalendar(id, query.date ?? new Date().toISOString().split("T")[0]), {
+        auth: true,
+        query: t.Object({ date: t.Optional(t.String()) }),
+    })
 
     // ── Admin-only ────────────────────────────────────────────────────────────
     .guard({ auth: true }, (app) =>

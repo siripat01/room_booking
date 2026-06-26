@@ -52,20 +52,27 @@ const bookingRoutes = new Elysia({ prefix: "/bookings" })
     )
     .post(
         "/",
-        async ({ user, body }) => {
+        async ({ user, body, status: setStatus }) => {
             const room = await prisma.room.findUniqueOrThrow({ where: { id: body.roomId }, select: { autoApprove: true } });
             const autoConfirm = room.autoApprove || ["teacherRole", "adminRole"].includes(user.role ?? "");
-            return bookingService.createBooking({
-                userId: user.id,
-                roomId: body.roomId,
-                startTime: new Date(body.startTime),
-                endTime: new Date(body.endTime),
-                attendees: body.attendees,
-                purpose: body.purpose,
-                autoConfirm,
-                approvedBy: autoConfirm ? user.id : undefined,
-                userRole: user.role ?? "userRole",
-            });
+            try {
+                return await bookingService.createBooking({
+                    userId: user.id,
+                    roomId: body.roomId,
+                    startTime: new Date(body.startTime),
+                    endTime: new Date(body.endTime),
+                    attendees: body.attendees,
+                    purpose: body.purpose,
+                    autoConfirm,
+                    approvedBy: autoConfirm ? user.id : undefined,
+                    userRole: user.role ?? "userRole",
+                });
+            } catch (e: any) {
+                if (e.message?.includes("overlapping")) {
+                    return setStatus(409, { error: e.message, alternatives: e.alternatives ?? [] });
+                }
+                throw e;
+            }
         },
         {
             auth: true,

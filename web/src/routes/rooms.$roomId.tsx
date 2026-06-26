@@ -1,5 +1,5 @@
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCurrentUser } from "../lib/useCurrentUser";
 import { roomQuery, roomAvailabilityQuery, sessionQuery } from "../lib/queries";
@@ -14,7 +14,7 @@ import { Separator } from "../components/ui/separator";
 import { Textarea } from "../components/ui/textarea";
 import {
   ArrowLeft, Building2, Users, Monitor, PenSquare, Tv, Wind, Wifi,
-  CalendarDays, Clock, CheckCircle2, Timer, Loader2, MapPin,
+  CalendarDays, Clock, CheckCircle2, Timer, Loader2, MapPin, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import { LoadingCentered } from "../components/LoadingSpinner";
 import { toast } from "sonner";
@@ -65,6 +65,7 @@ const AMENITY_LABELS: Record<string, string> = {
 };
 
 type BookingResult = { status: string };
+type CalendarBooking = { id: string; startTime: string; endTime: string; status: string; purpose: string | null };
 
 function RoomDetailPage() {
   const { roomId } = Route.useParams();
@@ -72,6 +73,7 @@ function RoomDetailPage() {
   const qc = useQueryClient();
   const { data: room, isLoading: roomLoading } = useQuery(roomQuery(roomId));
   const [booking, setBooking] = useState<BookingResult | null>(null);
+  const [conflictAlts, setConflictAlts] = useState<{ startTime: string; endTime: string }[]>([]);
 
   const today = new Date().toLocaleDateString("en-CA");
   const [form, setForm] = useState({
@@ -113,14 +115,18 @@ function RoomDetailPage() {
       const slot = SLOTS.find((s) => s.start === form.slot)!;
       const startTime = new Date(`${form.date}T${slot.start}:00`).toISOString();
       const endTime = new Date(`${form.date}T${slot.end}:00`).toISOString();
-      const { data, error } = await (app.api.bookings as any).post({
-        roomId,
-        startTime,
-        endTime,
-        attendees: parseInt(form.attendees),
-        purpose: form.purpose,
+      const res = await fetch("/api/bookings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ roomId, startTime, endTime, attendees: parseInt(form.attendees), purpose: form.purpose }),
       });
-      if (error) throw new Error((error as any)?.message ?? "Booking failed");
+      const data = await res.json();
+      if (!res.ok) {
+        const err: any = new Error(data?.error ?? "Booking failed");
+        err.alternatives = data?.alternatives ?? [];
+        throw err;
+      }
       return data as BookingResult;
     },
     onSuccess: (data) => {
@@ -131,7 +137,13 @@ function RoomDetailPage() {
         : "Booking submitted — awaiting admin approval.";
       toast.success(msg);
     },
-    onError: (err: any) => toast.error(err?.message ?? "Booking failed. Please try again."),
+    onError: (err: any) => {
+      if (err?.alternatives?.length) {
+        setConflictAlts(err.alternatives);
+      } else {
+        toast.error(err?.message ?? "Booking failed. Please try again.");
+      }
+    },
   });
 
   function handleBooking(e: React.FormEvent) {
@@ -247,6 +259,8 @@ function RoomDetailPage() {
                 </div>
               </div>
             )}
+
+            <WeeklyCalendar roomId={roomId} />
           </div>
 
           {/* Booking form */}
@@ -380,6 +394,36 @@ function RoomDetailPage() {
                       {bookMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                       {bookMutation.isPending ? "Submitting…" : autoConfirm ? "Book Now" : "Request Booking"}
                     </Button>
+
+                    {conflictAlts.length > 0 && (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
+                        <p className="text-xs font-medium text-amber-700">ช่วงเวลานี้ถูกจองแล้ว ลองช่วงเวลาอื่น:</p>
+                        <div className="space-y-1.5">
+                          {conflictAlts.map((alt) => {
+                            const s = new Date(alt.startTime);
+                            const e = new Date(alt.endTime);
+                            const fmt = (d: Date) => d.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", hour12: false });
+                            return (
+                              <button
+                                key={alt.startTime}
+                                type="button"
+                                onClick={() => {
+                                  const d = s.toLocaleDateString("en-CA");
+                                  const start = `${s.getHours().toString().padStart(2,"0")}:${s.getMinutes().toString().padStart(2,"0")}`;
+                                  const end = `${e.getHours().toString().padStart(2,"0")}:${e.getMinutes().toString().padStart(2,"0")}`;
+                                  setForm((f) => ({ ...f, date: d, slot: start }));
+                                  setConflictAlts([]);
+                                  toast.info(`เลือก ${fmt(s)}–${fmt(e)} แล้ว`);
+                                }}
+                                className="w-full text-left px-3 py-1.5 rounded-md border border-amber-200 bg-white hover:bg-amber-100 text-sm text-amber-800 transition-colors"
+                              >
+                                {fmt(s)} – {fmt(e)}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </form>
                 )}
               </CardContent>
@@ -387,6 +431,172 @@ function RoomDetailPage() {
           </div>
         </div>
       </main>
+    </div>
+  );
+}
+
+// ── Weekly Calendar ───────────────────────────────────────────────────────────
+
+const HOUR_START = 7;
+const HOUR_END = 22;
+const HOURS = Array.from({ length: HOUR_END - HOUR_START }, (_, i) => HOUR_START + i);
+const DAYS = ["จ", "อ", "พ", "พฤ", "ศ", "ส", "อา"];
+const STATUS_COLOR: Record<string, string> = {
+  CONFIRMED: "bg-blue-500 text-white",
+  PENDING: "bg-amber-400 text-white",
+  CHECKED_IN: "bg-emerald-500 text-white",
+};
+
+function getMonday(date: Date) {
+  const d = new Date(date);
+  const day = d.getDay();
+  d.setDate(d.getDate() - ((day + 6) % 7));
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function WeeklyCalendar({ roomId }: { roomId: string }) {
+  const [weekStart, setWeekStart] = useState(() => getMonday(new Date()));
+
+  const dateStr = weekStart.toLocaleDateString("en-CA");
+  const { data, isLoading } = useQuery({
+    queryKey: ["room-calendar", roomId, dateStr],
+    queryFn: async () => {
+      const res = await fetch(`/api/rooms/${roomId}/calendar?date=${dateStr}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load calendar");
+      return res.json() as Promise<{ weekStart: string; bookings: CalendarBooking[] }>;
+    },
+    staleTime: 60_000,
+  });
+
+  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + i);
+    return d;
+  }), [weekStart]);
+
+  const totalMinutes = (HOUR_END - HOUR_START) * 60;
+  const PX_PER_MIN = 1.5; // px per minute
+
+  function positionStyle(b: CalendarBooking) {
+    const start = new Date(b.startTime);
+    const end = new Date(b.endTime);
+    const startMin = start.getHours() * 60 + start.getMinutes() - HOUR_START * 60;
+    const endMin = end.getHours() * 60 + end.getMinutes() - HOUR_START * 60;
+    const top = Math.max(0, startMin) * PX_PER_MIN;
+    const height = Math.max(18, (endMin - startMin)) * PX_PER_MIN;
+    return { top, height };
+  }
+
+  const bookingsByDay = useMemo(() => {
+    const map = new Map<string, CalendarBooking[]>();
+    for (const b of data?.bookings ?? []) {
+      const key = new Date(b.startTime).toLocaleDateString("en-CA");
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(b);
+    }
+    return map;
+  }, [data]);
+
+  const containerH = totalMinutes * PX_PER_MIN;
+
+  return (
+    <div className="bg-white rounded-xl border p-5">
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="font-semibold text-slate-800">ตารางสัปดาห์นี้</h2>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setWeekStart((w) => { const d = new Date(w); d.setDate(d.getDate() - 7); return d; })}
+            className="p-1 rounded hover:bg-slate-100 transition-colors"
+          >
+            <ChevronLeft className="w-4 h-4 text-slate-500" />
+          </button>
+          <span className="text-xs text-muted-foreground px-2 min-w-36 text-center">
+            {weekStart.toLocaleDateString("th-TH", { day: "numeric", month: "short" })} –{" "}
+            {days[6].toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })}
+          </span>
+          <button
+            onClick={() => setWeekStart((w) => { const d = new Date(w); d.setDate(d.getDate() + 7); return d; })}
+            className="p-1 rounded hover:bg-slate-100 transition-colors"
+          >
+            <ChevronRight className="w-4 h-4 text-slate-500" />
+          </button>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="flex justify-center py-10"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+      ) : (
+        <div className="overflow-x-auto">
+          <div className="min-w-[560px]">
+            {/* Day headers */}
+            <div className="grid grid-cols-[32px_repeat(7,1fr)] mb-1">
+              <div />
+              {days.map((d, i) => {
+                const isToday = d.toLocaleDateString("en-CA") === new Date().toLocaleDateString("en-CA");
+                return (
+                  <div key={i} className="text-center pb-1">
+                    <p className="text-xs text-muted-foreground">{DAYS[i]}</p>
+                    <p className={`text-sm font-semibold rounded-full w-7 h-7 mx-auto flex items-center justify-center ${
+                      isToday ? "bg-blue-600 text-white" : "text-slate-700"
+                    }`}>{d.getDate()}</p>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Grid */}
+            <div className="grid grid-cols-[32px_repeat(7,1fr)] border-t border-slate-100" style={{ height: containerH }}>
+              {/* Hour labels */}
+              <div className="relative">
+                {HOURS.map((h) => (
+                  <div key={h} className="absolute right-1 text-[10px] text-muted-foreground -translate-y-2"
+                    style={{ top: (h - HOUR_START) * 60 * PX_PER_MIN }}>
+                    {h}
+                  </div>
+                ))}
+              </div>
+
+              {/* Day columns */}
+              {days.map((d, i) => {
+                const key = d.toLocaleDateString("en-CA");
+                const dayBookings = bookingsByDay.get(key) ?? [];
+                return (
+                  <div key={i} className="relative border-l border-slate-100">
+                    {HOURS.map((h) => (
+                      <div key={h} className="absolute w-full border-t border-slate-50"
+                        style={{ top: (h - HOUR_START) * 60 * PX_PER_MIN, height: 60 * PX_PER_MIN }} />
+                    ))}
+                    {dayBookings.map((b) => {
+                      const { top, height } = positionStyle(b);
+                      const color = STATUS_COLOR[b.status] ?? "bg-slate-400 text-white";
+                      return (
+                        <div
+                          key={b.id}
+                          className={`absolute left-0.5 right-0.5 rounded px-1 text-[10px] leading-tight overflow-hidden ${color}`}
+                          style={{ top, height }}
+                          title={b.purpose ?? b.status}
+                        >
+                          {b.purpose ?? b.status}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Legend */}
+            <div className="flex gap-3 mt-3 pt-2 border-t border-slate-100">
+              {[["CONFIRMED", "bg-blue-500", "ยืนยันแล้ว"], ["PENDING", "bg-amber-400", "รออนุมัติ"], ["CHECKED_IN", "bg-emerald-500", "เช็คอินแล้ว"]].map(([, bg, label]) => (
+                <div key={label} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <span className={`w-2.5 h-2.5 rounded-sm ${bg}`} />{label}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

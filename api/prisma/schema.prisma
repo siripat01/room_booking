@@ -49,6 +49,8 @@ model User {
   banReason  String?
   banExpires DateTime?
 
+  lineNotifyToken String? @map("line_notify_token")
+
   @@map("user")
 }
 

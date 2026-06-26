@@ -153,6 +153,30 @@ export class RoomService {
         };
     }
 
+    async getRoomCalendar(id: string, date: string) {
+        const d = new Date(date);
+        const day = d.getDay();
+        const monday = new Date(d);
+        monday.setDate(d.getDate() - ((day + 6) % 7));
+        monday.setHours(0, 0, 0, 0);
+        const sunday = new Date(monday);
+        sunday.setDate(monday.getDate() + 7);
+
+        const bookings = await this.prisma.booking.findMany({
+            where: {
+                roomId: id,
+                status: { in: ["PENDING", "CONFIRMED", "CHECKED_IN"] },
+                startTime: { gte: monday },
+                endTime: { lt: sunday },
+            },
+            select: { id: true, startTime: true, endTime: true, status: true, purpose: true },
+            orderBy: { startTime: "asc" },
+            take: 200,
+        });
+
+        return { weekStart: monday.toISOString(), bookings };
+    }
+
     // ── Time Slots ────────────────────────────────────────────────────────────
 
     async getTimeSlots(roomId: string) {

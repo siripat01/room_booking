@@ -1,5 +1,6 @@
 import Elysia, { t } from "elysia";
 import { DeviceService } from "./device.service";
+import { BookingService } from "../booking/booking.service";
 import { betterAuth } from "../middleware/auth.middleware";
 import prisma from "../../libs/db";
 
@@ -91,6 +92,43 @@ export const deviceRoutes = new Elysia()
     }, {
         auth: false,
         body: t.Object({ qrToken: t.String() }),
+    })
+    .post("/devices/:id/walkin", async ({ params: { id }, headers, body, status: setStatus }) => {
+        const deviceKey = headers["x-device-key"];
+        if (!deviceKey) return setStatus(401);
+        const device = await prisma.device.findFirst({
+            where: { id, deviceKey },
+            include: { room: { select: { id: true, autoApprove: true } } },
+        });
+        if (!device || !device.room) return setStatus(403, { error: "Device not linked to a room" });
+
+        // Use the first admin user as the walk-in actor
+        const adminUser = await prisma.user.findFirst({ where: { role: "adminRole" }, select: { id: true } });
+        if (!adminUser) return setStatus(500, { error: "No admin user found" });
+
+        const bookingService = new BookingService(prisma);
+        try {
+            return await bookingService.createBooking({
+                userId: adminUser.id,
+                roomId: device.room.id,
+                startTime: new Date(body.startTime),
+                endTime: new Date(body.endTime),
+                attendees: body.attendees,
+                purpose: body.purpose ?? "Walk-in Booking",
+                autoConfirm: device.room.autoApprove,
+                userRole: "adminRole",
+            });
+        } catch (e: any) {
+            return setStatus(400, { error: e.message });
+        }
+    }, {
+        auth: false,
+        body: t.Object({
+            startTime: t.String(),
+            endTime: t.String(),
+            attendees: t.Number({ minimum: 1, maximum: 500 }),
+            purpose: t.Optional(t.String()),
+        }),
     })
     .patch("/devices/:id/heartbeat", async ({ params: { id }, headers, status }) => {
         const deviceKey = headers["x-device-key"];

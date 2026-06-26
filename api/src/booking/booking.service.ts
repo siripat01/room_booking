@@ -1,6 +1,7 @@
 import type { PrismaClient } from "../../generated/prisma/client";
 import { randomBytes, timingSafeEqual } from "crypto";
 import { sendBookingApproved, sendBookingRejected } from "../lib/email";
+import { sendLineNotify } from "../lib/lineNotify";
 
 export class BookingService {
   constructor(private readonly prisma: PrismaClient) {}
@@ -47,7 +48,28 @@ export class BookingService {
             AND: [{ startTime: { lt: data.endTime } }, { endTime: { gt: data.startTime } }],
           },
         });
-        if (conflict) throw new Error("Room already has a booking overlapping this time slot");
+        if (conflict) {
+          const duration = data.endTime.getTime() - data.startTime.getTime();
+          const alternatives: { startTime: string; endTime: string }[] = [];
+          let probe = new Date(data.startTime);
+          probe.setMinutes(0, 0, 0);
+          probe.setHours(probe.getHours() + 1);
+          while (alternatives.length < 3 && probe.getTime() < data.startTime.getTime() + 8 * 3600_000) {
+            const probeEnd = new Date(probe.getTime() + duration);
+            const clash = await tx.booking.findFirst({
+              where: {
+                roomId: data.roomId,
+                status: { in: ["PENDING", "CONFIRMED", "CHECKED_IN"] },
+                AND: [{ startTime: { lt: probeEnd } }, { endTime: { gt: probe } }],
+              },
+            });
+            if (!clash) alternatives.push({ startTime: probe.toISOString(), endTime: probeEnd.toISOString() });
+            probe = new Date(probe.getTime() + 3_600_000);
+          }
+          const err: any = new Error("Room already has a booking overlapping this time slot");
+          err.alternatives = alternatives;
+          throw err;
+        }
 
         return tx.booking.create({
           data: {
@@ -161,7 +183,7 @@ export class BookingService {
       data: { status: "CONFIRMED", approvedAt: new Date(), approvedBy: adminId },
       include: {
         room: { select: { name: true, floor: true } },
-        user: { select: { name: true, email: true } },
+        user: { select: { name: true, email: true, lineNotifyToken: true } },
       },
     });
     sendBookingApproved({
@@ -173,6 +195,10 @@ export class BookingService {
       endTime: updated.endTime,
       purpose: updated.purpose,
     });
+    if (updated.user.lineNotifyToken) {
+      const start = updated.startTime.toLocaleString("th-TH", { timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" });
+      sendLineNotify(updated.user.lineNotifyToken, `✅ การจองได้รับการอนุมัติ\nห้อง: ${updated.room.name}\nเวลา: ${start}`);
+    }
     return updated;
   }
 
@@ -186,7 +212,7 @@ export class BookingService {
       data: { status: "REJECTED", rejectedReason: reason },
       include: {
         room: { select: { name: true, floor: true } },
-        user: { select: { name: true, email: true } },
+        user: { select: { name: true, email: true, lineNotifyToken: true } },
       },
     });
     sendBookingRejected({
@@ -199,6 +225,9 @@ export class BookingService {
       purpose: updated.purpose,
       reason,
     });
+    if (updated.user.lineNotifyToken) {
+      sendLineNotify(updated.user.lineNotifyToken, `❌ การจองถูกปฏิเสธ\nห้อง: ${updated.room.name}\nเหตุผล: ${reason}`);
+    }
     return updated;
   }
 
