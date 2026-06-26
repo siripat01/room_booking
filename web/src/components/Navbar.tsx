@@ -38,6 +38,7 @@ export function Navbar({ user }: NavbarProps) {
 
   const isAdmin = user?.role === "adminRole";
   const isTeacher = user?.role === "teacherRole";
+  const isPro = (user as any)?.plan === "PRO";
 
   return (
     <header className="border-b bg-background sticky top-0 z-40">
@@ -96,7 +97,10 @@ export function Navbar({ user }: NavbarProps) {
                 )}
                 <div className="hidden md:flex flex-col items-start">
                   <span className="text-sm font-medium max-w-32 truncate leading-tight">{user.name}</span>
-                  {(isAdmin || isTeacher) && (
+                  {isPro && (
+                    <Badge className="bg-blue-600 text-white text-[10px] px-1.5 py-0 h-4 leading-none">Pro</Badge>
+                  )}
+                  {!isPro && (isAdmin || isTeacher) && (
                     <Badge
                       variant={isAdmin ? "default" : "secondary"}
                       className="text-[10px] px-1.5 py-0 h-4 leading-none"

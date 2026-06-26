@@ -9,6 +9,7 @@ import bookingRoutes from "./booking/booking.route";
 import userRoutes from "./user/user.route";
 import { deviceRoutes } from "./device/device.route";
 import reportRoutes from "./report/report.route";
+import { subscriptionRoutes } from "./subscription/subscription.route";
 import { startCronJobs } from "./cron/index";
 
 const app = new Elysia({ prefix: "/api" })
@@ -36,6 +37,7 @@ const app = new Elysia({ prefix: "/api" })
   .use(userRoutes)
   .use(deviceRoutes)
   .use(reportRoutes)
+  .use(subscriptionRoutes)
   .use(authRoutes)
   .all("/health", () => "Healthy as fuck")
   .all("/version", () => process.env.APP_VERSION)

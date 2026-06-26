@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ProfileRouteImport } from './routes/profile'
+import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as PairRouteImport } from './routes/pair'
 import { Route as HomeRouteImport } from './routes/home'
 import { Route as BookingsRouteImport } from './routes/bookings'
@@ -34,6 +35,11 @@ const SettingsRoute = SettingsRouteImport.update({
 const ProfileRoute = ProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PricingRoute = PricingRouteImport.update({
+  id: '/pricing',
+  path: '/pricing',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PairRoute = PairRouteImport.update({
@@ -115,6 +121,7 @@ export interface FileRoutesByFullPath {
   '/bookings': typeof BookingsRoute
   '/home': typeof HomeRoute
   '/pair': typeof PairRoute
+  '/pricing': typeof PricingRoute
   '/profile': typeof ProfileRoute
   '/settings': typeof SettingsRoute
   '/admin/bookings': typeof AdminBookingsRoute
@@ -132,6 +139,7 @@ export interface FileRoutesByTo {
   '/bookings': typeof BookingsRoute
   '/home': typeof HomeRoute
   '/pair': typeof PairRoute
+  '/pricing': typeof PricingRoute
   '/profile': typeof ProfileRoute
   '/settings': typeof SettingsRoute
   '/admin/bookings': typeof AdminBookingsRoute
@@ -151,6 +159,7 @@ export interface FileRoutesById {
   '/bookings': typeof BookingsRoute
   '/home': typeof HomeRoute
   '/pair': typeof PairRoute
+  '/pricing': typeof PricingRoute
   '/profile': typeof ProfileRoute
   '/settings': typeof SettingsRoute
   '/admin/bookings': typeof AdminBookingsRoute
@@ -171,6 +180,7 @@ export interface FileRouteTypes {
     | '/bookings'
     | '/home'
     | '/pair'
+    | '/pricing'
     | '/profile'
     | '/settings'
     | '/admin/bookings'
@@ -188,6 +198,7 @@ export interface FileRouteTypes {
     | '/bookings'
     | '/home'
     | '/pair'
+    | '/pricing'
     | '/profile'
     | '/settings'
     | '/admin/bookings'
@@ -206,6 +217,7 @@ export interface FileRouteTypes {
     | '/bookings'
     | '/home'
     | '/pair'
+    | '/pricing'
     | '/profile'
     | '/settings'
     | '/admin/bookings'
@@ -225,6 +237,7 @@ export interface RootRouteChildren {
   BookingsRoute: typeof BookingsRoute
   HomeRoute: typeof HomeRoute
   PairRoute: typeof PairRoute
+  PricingRoute: typeof PricingRoute
   ProfileRoute: typeof ProfileRoute
   SettingsRoute: typeof SettingsRoute
   KioskDeviceIdRoute: typeof KioskDeviceIdRoute
@@ -245,6 +258,13 @@ declare module '@tanstack/react-router' {
       path: '/profile'
       fullPath: '/profile'
       preLoaderRoute: typeof ProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pricing': {
+      id: '/pricing'
+      path: '/pricing'
+      fullPath: '/pricing'
+      preLoaderRoute: typeof PricingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/pair': {
@@ -374,6 +394,7 @@ const rootRouteChildren: RootRouteChildren = {
   BookingsRoute: BookingsRoute,
   HomeRoute: HomeRoute,
   PairRoute: PairRoute,
+  PricingRoute: PricingRoute,
   ProfileRoute: ProfileRoute,
   SettingsRoute: SettingsRoute,
   KioskDeviceIdRoute: KioskDeviceIdRoute,

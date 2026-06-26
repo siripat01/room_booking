@@ -25,9 +25,19 @@ export class BookingService {
       throw new Error("คุณไม่มีสิทธิ์จองห้องนี้");
     }
 
-    // Booking limit check (skip for adminRole)
+    // Plan-based booking limit and advance window (skip for adminRole)
     if (data.userRole !== "adminRole") {
-      const activeLimit = data.userRole === "teacherRole" ? 5 : 3;
+      const dbUser = await this.prisma.user.findUnique({ where: { id: data.userId }, select: { plan: true } });
+      const isPro = dbUser?.plan === "PRO";
+
+      // Advance booking window
+      const maxDaysAhead = isPro ? 30 : 3;
+      const maxStartTime = new Date(Date.now() + maxDaysAhead * 24 * 3600_000);
+      if (data.startTime > maxStartTime) {
+        throw new Error(`${isPro ? "Pro" : "Free"} plan จองล่วงหน้าได้ไม่เกิน ${maxDaysAhead} วัน`);
+      }
+
+      const activeLimit = data.userRole === "teacherRole" ? 5 : isPro ? 10 : 3;
       const activeCount = await this.prisma.booking.count({
         where: { userId: data.userId, status: { in: ["PENDING", "CONFIRMED"] } },
       });
@@ -183,21 +193,23 @@ export class BookingService {
       data: { status: "CONFIRMED", approvedAt: new Date(), approvedBy: adminId },
       include: {
         room: { select: { name: true, floor: true } },
-        user: { select: { name: true, email: true, lineNotifyToken: true } },
+        user: { select: { name: true, email: true, lineNotifyToken: true, plan: true } },
       },
     });
-    sendBookingApproved({
-      userEmail: updated.user.email,
-      userName: updated.user.name,
-      roomName: updated.room.name,
-      roomFloor: updated.room.floor,
-      startTime: updated.startTime,
-      endTime: updated.endTime,
-      purpose: updated.purpose,
-    });
-    if (updated.user.lineNotifyToken) {
-      const start = updated.startTime.toLocaleString("th-TH", { timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" });
-      sendLineNotify(updated.user.lineNotifyToken, `✅ การจองได้รับการอนุมัติ\nห้อง: ${updated.room.name}\nเวลา: ${start}`);
+    if (updated.user.plan === "PRO") {
+      sendBookingApproved({
+        userEmail: updated.user.email,
+        userName: updated.user.name,
+        roomName: updated.room.name,
+        roomFloor: updated.room.floor,
+        startTime: updated.startTime,
+        endTime: updated.endTime,
+        purpose: updated.purpose,
+      });
+      if (updated.user.lineNotifyToken) {
+        const start = updated.startTime.toLocaleString("th-TH", { timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" });
+        sendLineNotify(updated.user.lineNotifyToken, `✅ การจองได้รับการอนุมัติ\nห้อง: ${updated.room.name}\nเวลา: ${start}`);
+      }
     }
     return updated;
   }
@@ -212,21 +224,23 @@ export class BookingService {
       data: { status: "REJECTED", rejectedReason: reason },
       include: {
         room: { select: { name: true, floor: true } },
-        user: { select: { name: true, email: true, lineNotifyToken: true } },
+        user: { select: { name: true, email: true, lineNotifyToken: true, plan: true } },
       },
     });
-    sendBookingRejected({
-      userEmail: updated.user.email,
-      userName: updated.user.name,
-      roomName: updated.room.name,
-      roomFloor: updated.room.floor,
-      startTime: updated.startTime,
-      endTime: updated.endTime,
-      purpose: updated.purpose,
-      reason,
-    });
-    if (updated.user.lineNotifyToken) {
-      sendLineNotify(updated.user.lineNotifyToken, `❌ การจองถูกปฏิเสธ\nห้อง: ${updated.room.name}\nเหตุผล: ${reason}`);
+    if (updated.user.plan === "PRO") {
+      sendBookingRejected({
+        userEmail: updated.user.email,
+        userName: updated.user.name,
+        roomName: updated.room.name,
+        roomFloor: updated.room.floor,
+        startTime: updated.startTime,
+        endTime: updated.endTime,
+        purpose: updated.purpose,
+        reason,
+      });
+      if (updated.user.lineNotifyToken) {
+        sendLineNotify(updated.user.lineNotifyToken, `❌ การจองถูกปฏิเสธ\nห้อง: ${updated.room.name}\nเหตุผล: ${reason}`);
+      }
     }
     return updated;
   }

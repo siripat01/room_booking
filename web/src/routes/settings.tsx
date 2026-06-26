@@ -7,8 +7,10 @@ import { Navbar } from "../components/Navbar";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { Bell, CheckCircle2, Loader2, Trash2 } from "lucide-react";
+import { Bell, CheckCircle2, Loader2, Trash2, Zap } from "lucide-react";
 import { toast } from "sonner";
+import { Link } from "@tanstack/react-router";
+import { Badge } from "../components/ui/badge";
 
 export const Route = createFileRoute("/settings")({
   beforeLoad: async ({ context: { queryClient }, location }) => {
@@ -28,6 +30,18 @@ function SettingsPage() {
   const { user } = useCurrentUser();
   const qc = useQueryClient();
   const [tokenInput, setTokenInput] = useState("");
+  const isPro = (user as any)?.plan === "PRO";
+
+  const portalMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/subscription/portal", { method: "POST", credentials: "include" });
+      if (!res.ok) throw new Error("Failed");
+      const { url } = await res.json();
+      return url as string;
+    },
+    onSuccess: (url) => { window.location.href = url; },
+    onError: () => toast.error("เกิดข้อผิดพลาด"),
+  });
 
   const { data: lineStatus, isLoading: lineLoading } = useQuery({
     queryKey: ["line-notify-status"],
@@ -85,6 +99,45 @@ function SettingsPage() {
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-slate-900">Settings</h1>
           <p className="text-muted-foreground text-sm mt-1">จัดการการแจ้งเตือนและการตั้งค่าส่วนตัว</p>
+        </div>
+
+        {/* Subscription */}
+        <div className="bg-white rounded-xl border shadow-sm p-6 mb-4">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
+              <Zap className="w-5 h-5 text-blue-600" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-slate-800">Subscription</h2>
+              <p className="text-xs text-muted-foreground">แผนการใช้งานของคุณ</p>
+            </div>
+            <div className="ml-auto">
+              {isPro
+                ? <Badge className="bg-blue-600 text-white">Pro</Badge>
+                : <Badge variant="secondary">Free</Badge>}
+            </div>
+          </div>
+          {isPro ? (
+            <div className="space-y-3">
+              <p className="text-sm text-slate-600">คุณใช้งาน <strong>Pro plan</strong> อยู่ — จองล่วงหน้าได้ 30 วัน, สูงสุด 10 รายการ, รับการแจ้งเตือน Email + Line</p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => portalMutation.mutate()}
+                disabled={portalMutation.isPending}
+              >
+                {portalMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+                จัดการ Subscription
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-slate-600">คุณใช้งาน <strong>Free plan</strong> — จองล่วงหน้าได้ 3 วัน, สูงสุด 3 รายการพร้อมกัน</p>
+              <Button size="sm" className="bg-blue-600 hover:bg-blue-700" asChild>
+                <Link to="/pricing">อัปเกรดเป็น Pro →</Link>
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Line Notify */}

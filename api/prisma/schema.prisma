@@ -49,7 +49,10 @@ model User {
   banReason  String?
   banExpires DateTime?
 
-  lineNotifyToken String? @map("line_notify_token")
+  lineNotifyToken  String?   @map("line_notify_token")
+  plan             String    @default("FREE")
+  stripeCustomerId String?   @map("stripe_customer_id")
+  planExpiresAt    DateTime? @map("plan_expires_at")
 
   @@map("user")
 }
