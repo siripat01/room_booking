@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState, useCallback } from "react";
 import jsQR from "jsqr";
-import { RefreshCw, CheckCircle, XCircle, Camera } from "lucide-react";
+import { RefreshCw, CheckCircle, XCircle, Camera, Plus, X } from "lucide-react";
 
 export const Route = createFileRoute("/kiosk/$deviceId")({
   component: KioskPage,
@@ -159,6 +159,9 @@ function KioskPage() {
   const [toastExiting, setToastExiting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [scanPaused, setScanPaused] = useState(false);
+  const [walkinOpen, setWalkinOpen] = useState(false);
+  const [walkinForm, setWalkinForm] = useState({ purpose: "", attendees: "1", duration: 60 });
+  const [walkinPending, setWalkinPending] = useState(false);
   const cooldownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -251,6 +254,32 @@ function KioskPage() {
     }
     cooldownRef.current = setTimeout(() => setScanPaused(false), 3000);
   }, [deviceId, deviceKey, fetchData, showToast]);
+
+  const handleWalkin = useCallback(async () => {
+    if (!deviceKey) return;
+    setWalkinPending(true);
+    const now = new Date();
+    const startTime = now.toISOString();
+    const endTime = new Date(now.getTime() + walkinForm.duration * 60_000).toISOString();
+    try {
+      const res = await kioskFetch(`/devices/${deviceId}/walkin`, deviceKey, {
+        method: "POST",
+        body: JSON.stringify({ startTime, endTime, attendees: parseInt(walkinForm.attendees) || 1, purpose: walkinForm.purpose || "Walk-in Booking" }),
+      });
+      if (res.ok) {
+        setWalkinOpen(false);
+        setWalkinForm({ purpose: "", attendees: "1", duration: 60 });
+        showToast({ ok: true, message: "จองสำเร็จ! ห้องถูกจองแล้ว" });
+        fetchData();
+      } else {
+        const d = await res.json();
+        showToast({ ok: false, message: d?.error ?? "จองไม่สำเร็จ" });
+      }
+    } catch {
+      showToast({ ok: false, message: "เกิดข้อผิดพลาด กรุณาลองใหม่" });
+    }
+    setWalkinPending(false);
+  }, [deviceId, deviceKey, walkinForm, fetchData, showToast]);
 
   useEffect(() => () => {
     if (cooldownRef.current) clearTimeout(cooldownRef.current);
@@ -349,7 +378,15 @@ function KioskPage() {
                   )}
                 </div>
               ) : (
-                <p className="text-5xl font-bold text-green-400">ว่าง</p>
+                <div className="space-y-4">
+                  <p className="text-5xl font-bold text-green-400">ว่าง</p>
+                  <button
+                    onClick={() => setWalkinOpen(true)}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-green-500/20 hover:bg-green-500/30 border border-green-500/30 text-green-300 rounded-xl text-sm font-medium transition-colors"
+                  >
+                    <Plus className="w-4 h-4" /> จองเดี๋ยวนี้
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -420,6 +457,69 @@ function KioskPage() {
           </div>
         </div>
       </div>
+
+      {/* Walk-in booking modal */}
+      {walkinOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="bg-gray-900 border border-white/10 rounded-2xl p-8 w-full max-w-sm shadow-2xl">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold text-white">จองเดี๋ยวนี้</h2>
+              <button onClick={() => setWalkinOpen(false)} className="text-gray-500 hover:text-white transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs text-gray-400 uppercase tracking-widest mb-1.5 block">หัวข้อ / วัตถุประสงค์</label>
+                <input
+                  type="text"
+                  value={walkinForm.purpose}
+                  onChange={(e) => setWalkinForm((f) => ({ ...f, purpose: e.target.value }))}
+                  placeholder="เช่น การประชุม, เรียน..."
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-white text-sm placeholder:text-gray-600 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 uppercase tracking-widest mb-1.5 block">จำนวนคน</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={walkinForm.attendees}
+                  onChange={(e) => setWalkinForm((f) => ({ ...f, attendees: e.target.value }))}
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 uppercase tracking-widest mb-1.5 block">ระยะเวลา</label>
+                <div className="grid grid-cols-4 gap-2">
+                  {[30, 60, 90, 120].map((d) => (
+                    <button
+                      key={d}
+                      onClick={() => setWalkinForm((f) => ({ ...f, duration: d }))}
+                      className={`py-2 rounded-lg text-sm font-medium border transition-colors ${
+                        walkinForm.duration === d
+                          ? "bg-blue-600 border-blue-600 text-white"
+                          : "border-white/10 text-gray-400 hover:border-white/30"
+                      }`}
+                    >
+                      {d < 60 ? `${d}น.` : `${d / 60}ชม.`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <button
+                onClick={handleWalkin}
+                disabled={walkinPending}
+                className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl font-semibold transition-colors flex items-center justify-center gap-2"
+              >
+                {walkinPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                {walkinPending ? "กำลังจอง…" : "ยืนยันการจอง"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Camera strip */}
       <div className="border-t border-white/10 h-48 flex">

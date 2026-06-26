@@ -5,4 +5,5 @@ export type CreateRoomInput = {
     floor: string;
     amenities: string[];
     allowedRoles?: string[];
+    autoApprove?: boolean;
 }

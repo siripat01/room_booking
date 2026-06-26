@@ -122,6 +122,12 @@ export function Navbar({ user }: NavbarProps) {
                   Profile
                 </Link>
               </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link to="/settings" className="flex items-center gap-2 cursor-pointer">
+                  <Settings className="w-4 h-4" />
+                  Settings
+                </Link>
+              </DropdownMenuItem>
               {isAdmin && (
                 <DropdownMenuItem asChild>
                   <Link to="/admin" className="flex items-center gap-2 cursor-pointer">

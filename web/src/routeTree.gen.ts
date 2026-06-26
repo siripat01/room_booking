@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as PairRouteImport } from './routes/pair'
 import { Route as HomeRouteImport } from './routes/home'
@@ -25,6 +26,11 @@ import { Route as AdminRoomsRouteImport } from './routes/admin/rooms'
 import { Route as AdminDevicesRouteImport } from './routes/admin/devices'
 import { Route as AdminBookingsRouteImport } from './routes/admin/bookings'
 
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ProfileRoute = ProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
@@ -110,6 +116,7 @@ export interface FileRoutesByFullPath {
   '/home': typeof HomeRoute
   '/pair': typeof PairRoute
   '/profile': typeof ProfileRoute
+  '/settings': typeof SettingsRoute
   '/admin/bookings': typeof AdminBookingsRoute
   '/admin/devices': typeof AdminDevicesRoute
   '/admin/rooms': typeof AdminRoomsRoute
@@ -126,6 +133,7 @@ export interface FileRoutesByTo {
   '/home': typeof HomeRoute
   '/pair': typeof PairRoute
   '/profile': typeof ProfileRoute
+  '/settings': typeof SettingsRoute
   '/admin/bookings': typeof AdminBookingsRoute
   '/admin/devices': typeof AdminDevicesRoute
   '/admin/rooms': typeof AdminRoomsRoute
@@ -144,6 +152,7 @@ export interface FileRoutesById {
   '/home': typeof HomeRoute
   '/pair': typeof PairRoute
   '/profile': typeof ProfileRoute
+  '/settings': typeof SettingsRoute
   '/admin/bookings': typeof AdminBookingsRoute
   '/admin/devices': typeof AdminDevicesRoute
   '/admin/rooms': typeof AdminRoomsRoute
@@ -163,6 +172,7 @@ export interface FileRouteTypes {
     | '/home'
     | '/pair'
     | '/profile'
+    | '/settings'
     | '/admin/bookings'
     | '/admin/devices'
     | '/admin/rooms'
@@ -179,6 +189,7 @@ export interface FileRouteTypes {
     | '/home'
     | '/pair'
     | '/profile'
+    | '/settings'
     | '/admin/bookings'
     | '/admin/devices'
     | '/admin/rooms'
@@ -196,6 +207,7 @@ export interface FileRouteTypes {
     | '/home'
     | '/pair'
     | '/profile'
+    | '/settings'
     | '/admin/bookings'
     | '/admin/devices'
     | '/admin/rooms'
@@ -214,12 +226,20 @@ export interface RootRouteChildren {
   HomeRoute: typeof HomeRoute
   PairRoute: typeof PairRoute
   ProfileRoute: typeof ProfileRoute
+  SettingsRoute: typeof SettingsRoute
   KioskDeviceIdRoute: typeof KioskDeviceIdRoute
   RoomsRoomIdRoute: typeof RoomsRoomIdRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/profile': {
       id: '/profile'
       path: '/profile'
@@ -355,6 +375,7 @@ const rootRouteChildren: RootRouteChildren = {
   HomeRoute: HomeRoute,
   PairRoute: PairRoute,
   ProfileRoute: ProfileRoute,
+  SettingsRoute: SettingsRoute,
   KioskDeviceIdRoute: KioskDeviceIdRoute,
   RoomsRoomIdRoute: RoomsRoomIdRoute,
 }

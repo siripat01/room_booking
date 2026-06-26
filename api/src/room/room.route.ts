@@ -39,6 +39,11 @@ const roomRoutes = new Elysia()
     .get("/rooms/:id/schedule", ({ params: { id } }) => roomService.getRoomSchedule(id), { auth: true })
     .get("/rooms/:id/time-slots", ({ params: { id } }) => roomService.getTimeSlots(id), { auth: true })
     .get("/rooms/:id/closures", ({ params: { id } }) => roomService.getClosures(id), { auth: true })
+    .get("/rooms/:id/calendar", ({ params: { id }, query }) =>
+        roomService.getRoomCalendar(id, query.date ?? new Date().toISOString().split("T")[0]), {
+        auth: true,
+        query: t.Object({ date: t.Optional(t.String()) }),
+    })
 
     // ── Admin-only ────────────────────────────────────────────────────────────
     .guard({ auth: true }, (app) =>
@@ -47,7 +52,7 @@ const roomRoutes = new Elysia()
                 if (user.role !== "adminRole") return status(403);
             })
             .post("/rooms", ({ body }) =>
-                roomService.createRoom({ ...body, amenities: body.amenities ?? [], allowedRoles: body.allowedRoles ?? [] }), {
+                roomService.createRoom({ ...body, amenities: body.amenities ?? [], allowedRoles: body.allowedRoles ?? [], autoApprove: body.autoApprove ?? false }), {
                 body: t.Object({
                     name: t.String(),
                     description: t.Optional(t.String()),
@@ -55,6 +60,7 @@ const roomRoutes = new Elysia()
                     floor: t.String(),
                     amenities: t.Optional(t.Array(t.String())),
                     allowedRoles: t.Optional(t.Array(t.String())),
+                    autoApprove: t.Optional(t.Boolean()),
                 }),
             })
             .put("/rooms/:id", ({ params: { id }, body }) => roomService.updateRoom(id, body), {
@@ -66,6 +72,7 @@ const roomRoutes = new Elysia()
                     amenities: t.Optional(t.Array(t.String())),
                     allowedRoles: t.Optional(t.Array(t.String())),
                     isActive: t.Optional(t.Boolean()),
+                    autoApprove: t.Optional(t.Boolean()),
                 }),
             })
             .delete("/rooms/:id", ({ params: { id } }) => roomService.deleteRoom(id))

@@ -49,6 +49,8 @@ model User {
   banReason  String?
   banExpires DateTime?
 
+  lineNotifyToken String? @map("line_notify_token")
+
   @@map("user")
 }
 
@@ -114,6 +116,8 @@ model Room {
   amenities    String[] @default([])
   // Roles allowed to book this room. Empty = everyone can book.
   allowedRoles String[] @default([])
+  // Auto-approve bookings for this room (skip PENDING)
+  autoApprove  Boolean  @default(false) @map("auto_approve")
 
   // Relations
   // images        RoomImage[]
