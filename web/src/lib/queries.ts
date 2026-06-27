@@ -23,6 +23,7 @@ export const sessionQuery = () => ({
       isStudent: role === "userRole",
       banned: (u.banned as boolean | null) ?? false,
       banReason: (u.banReason as string | null) ?? null,
+      plan: (u.plan as string | null) ?? "FREE",
     };
   },
   staleTime: 1000 * 60 * 5, // 5 min

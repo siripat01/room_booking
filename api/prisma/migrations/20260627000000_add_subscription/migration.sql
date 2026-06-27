@@ -1,0 +1,3 @@
+ALTER TABLE "user" ADD COLUMN "plan" TEXT NOT NULL DEFAULT 'FREE';
+ALTER TABLE "user" ADD COLUMN "stripe_customer_id" TEXT;
+ALTER TABLE "user" ADD COLUMN "plan_expires_at" TIMESTAMP;
