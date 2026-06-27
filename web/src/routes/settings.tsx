@@ -30,7 +30,17 @@ function SettingsPage() {
   const { user } = useCurrentUser();
   const qc = useQueryClient();
   const [tokenInput, setTokenInput] = useState("");
-  const isPro = (user as any)?.plan === "PRO";
+  const { data: planData } = useQuery({
+    queryKey: ["my-plan"],
+    queryFn: async () => {
+      const res = await fetch("/api/users/me/plan", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed");
+      return res.json() as Promise<{ plan: string; planExpiresAt: string | null }>;
+    },
+  });
+
+  const isPro = planData?.plan === "PRO";
+  const cancelledAt = planData?.planExpiresAt ? new Date(planData.planExpiresAt) : null;
 
   const portalMutation = useMutation({
     mutationFn: async () => {
@@ -119,7 +129,17 @@ function SettingsPage() {
           </div>
           {isPro ? (
             <div className="space-y-3">
-              <p className="text-sm text-slate-600">คุณใช้งาน <strong>Pro plan</strong> อยู่ — จองล่วงหน้าได้ 30 วัน, สูงสุด 10 รายการ, รับการแจ้งเตือน Email + Line</p>
+              {cancelledAt ? (
+                <p className="text-sm text-slate-600">
+                  คุณยกเลิก Pro แล้ว — ยังใช้งานได้จนถึง{" "}
+                  <strong className="text-amber-600">
+                    {cancelledAt.toLocaleDateString("th-TH", { day: "numeric", month: "long", year: "numeric" })}
+                  </strong>
+                  {" "}หลังจากนั้นจะกลับเป็น Free อัตโนมัติ
+                </p>
+              ) : (
+                <p className="text-sm text-slate-600">คุณใช้งาน <strong>Pro plan</strong> อยู่ — จองล่วงหน้าได้ 30 วัน, สูงสุด 10 รายการ, รับการแจ้งเตือน Email + Line</p>
+              )}
               <Button
                 variant="outline"
                 size="sm"
@@ -127,7 +147,7 @@ function SettingsPage() {
                 disabled={portalMutation.isPending}
               >
                 {portalMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
-                จัดการ Subscription
+                {cancelledAt ? "ต่ออายุ Subscription" : "จัดการ Subscription"}
               </Button>
             </div>
           ) : (

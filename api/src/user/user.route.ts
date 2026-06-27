@@ -24,6 +24,11 @@ const userRoutes = new Elysia({ prefix: "/users" })
     await prisma.user.update({ where: { id: user.id }, data: { lineNotifyToken: null } });
     return { success: true };
   }, { auth: true })
+  .get("/me/plan", async ({ user, status }) => {
+    if (!user) return status(401);
+    const u = await prisma.user.findUnique({ where: { id: user.id }, select: { plan: true, planExpiresAt: true } });
+    return { plan: u?.plan ?? "FREE", planExpiresAt: u?.planExpiresAt ?? null };
+  }, { auth: true })
   .post("/me/line-notify/test", async ({ user, status: setStatus }) => {
     if (!user) return setStatus(401);
     const u = await prisma.user.findUnique({ where: { id: user.id }, select: { lineNotifyToken: true } });

@@ -67,11 +67,17 @@ export const subscriptionRoutes = new Elysia()
             const sub = event.data.object as any;
             const customerId = sub.customer as string;
             const isActive = sub.status === "active" || sub.status === "trialing";
+            const cancelAtPeriodEnd = sub.cancel_at_period_end === true;
             await prisma.user.updateMany({
                 where: { stripeCustomerId: customerId },
                 data: {
                     plan: isActive ? "PRO" : "FREE",
-                    planExpiresAt: isActive ? null : new Date(sub.current_period_end * 1000),
+                    // เก็บวันหมดอายุถ้า user กด cancel (ยังใช้ Pro ได้จนครบ period)
+                    planExpiresAt: isActive && cancelAtPeriodEnd
+                        ? new Date(sub.current_period_end * 1000)
+                        : isActive
+                        ? null
+                        : new Date(sub.current_period_end * 1000),
                 },
             });
         } else if (event.type === "customer.subscription.deleted") {
