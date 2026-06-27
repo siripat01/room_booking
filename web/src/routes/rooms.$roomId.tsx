@@ -437,9 +437,9 @@ function RoomDetailPage() {
 
 // ── Weekly Calendar ───────────────────────────────────────────────────────────
 
-const HOUR_START = 7;
-const HOUR_END = 22;
-const HOURS = Array.from({ length: HOUR_END - HOUR_START }, (_, i) => HOUR_START + i);
+const CAL_HOUR_START = 8;
+const CAL_HOUR_END = 16;
+const CAL_HOURS = Array.from({ length: CAL_HOUR_END - CAL_HOUR_START + 1 }, (_, i) => CAL_HOUR_START + i);
 const DAYS = ["จ", "อ", "พ", "พฤ", "ศ", "ส", "อา"];
 const STATUS_COLOR: Record<string, string> = {
   CONFIRMED: "bg-blue-500 text-white",
@@ -454,6 +454,8 @@ function getMonday(date: Date) {
   d.setHours(0, 0, 0, 0);
   return d;
 }
+
+const TOTAL_MINS = (CAL_HOUR_END - CAL_HOUR_START) * 60;
 
 function WeeklyCalendar({ roomId }: { roomId: string }) {
   const [weekStart, setWeekStart] = useState(() => getMonday(new Date()));
@@ -475,19 +477,6 @@ function WeeklyCalendar({ roomId }: { roomId: string }) {
     return d;
   }), [weekStart]);
 
-  const totalMinutes = (HOUR_END - HOUR_START) * 60;
-  const PX_PER_MIN = 1.5; // px per minute
-
-  function positionStyle(b: CalendarBooking) {
-    const start = new Date(b.startTime);
-    const end = new Date(b.endTime);
-    const startMin = start.getHours() * 60 + start.getMinutes() - HOUR_START * 60;
-    const endMin = end.getHours() * 60 + end.getMinutes() - HOUR_START * 60;
-    const top = Math.max(0, startMin) * PX_PER_MIN;
-    const height = Math.max(18, (endMin - startMin)) * PX_PER_MIN;
-    return { top, height };
-  }
-
   const bookingsByDay = useMemo(() => {
     const map = new Map<string, CalendarBooking[]>();
     for (const b of data?.bookings ?? []) {
@@ -498,12 +487,12 @@ function WeeklyCalendar({ roomId }: { roomId: string }) {
     return map;
   }, [data]);
 
-  const containerH = totalMinutes * PX_PER_MIN;
+  const todayStr = new Date().toLocaleDateString("en-CA");
 
   return (
-    <div className="bg-white rounded-xl border p-5">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="font-semibold text-slate-800">ตารางสัปดาห์นี้</h2>
+    <div className="bg-white rounded-xl border p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="font-semibold text-slate-800 text-sm">ตารางสัปดาห์นี้</h2>
         <div className="flex items-center gap-1">
           <button
             onClick={() => setWeekStart((w) => { const d = new Date(w); d.setDate(d.getDate() - 7); return d; })}
@@ -511,9 +500,9 @@ function WeeklyCalendar({ roomId }: { roomId: string }) {
           >
             <ChevronLeft className="w-4 h-4 text-slate-500" />
           </button>
-          <span className="text-xs text-muted-foreground px-2 min-w-36 text-center">
+          <span className="text-xs text-muted-foreground px-1 min-w-32 text-center">
             {weekStart.toLocaleDateString("th-TH", { day: "numeric", month: "short" })} –{" "}
-            {days[6].toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })}
+            {days[6].toLocaleDateString("th-TH", { day: "numeric", month: "short" })}
           </span>
           <button
             onClick={() => setWeekStart((w) => { const d = new Date(w); d.setDate(d.getDate() + 7); return d; })}
@@ -525,72 +514,87 @@ function WeeklyCalendar({ roomId }: { roomId: string }) {
       </div>
 
       {isLoading ? (
-        <div className="flex justify-center py-10"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+        <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
       ) : (
         <div className="overflow-x-auto">
-          <div className="min-w-[560px]">
-            {/* Day headers */}
-            <div className="grid grid-cols-[32px_repeat(7,1fr)] mb-1">
-              <div />
-              {days.map((d, i) => {
-                const isToday = d.toLocaleDateString("en-CA") === new Date().toLocaleDateString("en-CA");
-                return (
-                  <div key={i} className="text-center pb-1">
-                    <p className="text-xs text-muted-foreground">{DAYS[i]}</p>
-                    <p className={`text-sm font-semibold rounded-full w-7 h-7 mx-auto flex items-center justify-center ${
-                      isToday ? "bg-blue-600 text-white" : "text-slate-700"
-                    }`}>{d.getDate()}</p>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Grid */}
-            <div className="grid grid-cols-[32px_repeat(7,1fr)] border-t border-slate-100" style={{ height: containerH }}>
-              {/* Hour labels */}
-              <div className="relative">
-                {HOURS.map((h) => (
-                  <div key={h} className="absolute right-1 text-[10px] text-muted-foreground -translate-y-2"
-                    style={{ top: (h - HOUR_START) * 60 * PX_PER_MIN }}>
-                    {h}
-                  </div>
+          <div className="min-w-[420px]">
+            {/* Hour header row */}
+            <div className="flex mb-0.5">
+              <div className="w-10 shrink-0" />
+              <div className="flex-1 relative h-5">
+                {CAL_HOURS.map((h) => (
+                  <span
+                    key={h}
+                    className="absolute text-[10px] text-muted-foreground -translate-x-1/2"
+                    style={{ left: `${((h - CAL_HOUR_START) / (CAL_HOUR_END - CAL_HOUR_START)) * 100}%` }}
+                  >
+                    {h.toString().padStart(2, "0")}
+                  </span>
                 ))}
               </div>
+            </div>
 
-              {/* Day columns */}
+            {/* Day rows */}
+            <div className="space-y-1">
               {days.map((d, i) => {
                 const key = d.toLocaleDateString("en-CA");
+                const isToday = key === todayStr;
                 const dayBookings = bookingsByDay.get(key) ?? [];
                 return (
-                  <div key={i} className="relative border-l border-slate-100">
-                    {HOURS.map((h) => (
-                      <div key={h} className="absolute w-full border-t border-slate-50"
-                        style={{ top: (h - HOUR_START) * 60 * PX_PER_MIN, height: 60 * PX_PER_MIN }} />
-                    ))}
-                    {dayBookings.map((b) => {
-                      const { top, height } = positionStyle(b);
-                      const color = STATUS_COLOR[b.status] ?? "bg-slate-400 text-white";
-                      return (
+                  <div key={i} className="flex items-center gap-1.5">
+                    {/* Day label */}
+                    <div className="w-10 shrink-0 text-right pr-1.5">
+                      <span className={`text-xs font-medium ${isToday ? "text-blue-600" : "text-slate-500"}`}>
+                        {DAYS[i]}
+                      </span>
+                      <span className={`block text-[10px] leading-none ${isToday ? "text-blue-500" : "text-muted-foreground"}`}>
+                        {d.getDate()}
+                      </span>
+                    </div>
+
+                    {/* Time bar */}
+                    <div className={`flex-1 relative h-7 rounded ${isToday ? "bg-blue-50" : "bg-slate-50"} border border-slate-100`}>
+                      {/* Hour grid lines */}
+                      {CAL_HOURS.slice(1, -1).map((h) => (
                         <div
-                          key={b.id}
-                          className={`absolute left-0.5 right-0.5 rounded px-1 text-[10px] leading-tight overflow-hidden ${color}`}
-                          style={{ top, height }}
-                          title={b.purpose ?? b.status}
-                        >
-                          {b.purpose ?? b.status}
-                        </div>
-                      );
-                    })}
+                          key={h}
+                          className="absolute top-0 bottom-0 border-l border-slate-200 border-dashed"
+                          style={{ left: `${((h - CAL_HOUR_START) / (CAL_HOUR_END - CAL_HOUR_START)) * 100}%` }}
+                        />
+                      ))}
+
+                      {/* Booking blocks */}
+                      {dayBookings.map((b) => {
+                        const start = new Date(b.startTime);
+                        const end = new Date(b.endTime);
+                        const startMin = Math.max(0, start.getHours() * 60 + start.getMinutes() - CAL_HOUR_START * 60);
+                        const endMin = Math.min(TOTAL_MINS, end.getHours() * 60 + end.getMinutes() - CAL_HOUR_START * 60);
+                        if (endMin <= 0 || startMin >= TOTAL_MINS) return null;
+                        const left = (startMin / TOTAL_MINS) * 100;
+                        const width = Math.max(1, ((endMin - startMin) / TOTAL_MINS) * 100);
+                        const color = STATUS_COLOR[b.status] ?? "bg-slate-400 text-white";
+                        return (
+                          <div
+                            key={b.id}
+                            className={`absolute top-0.5 bottom-0.5 rounded text-[9px] px-1 overflow-hidden flex items-center ${color}`}
+                            style={{ left: `${left}%`, width: `${width}%` }}
+                            title={`${start.getHours().toString().padStart(2,"0")}:${start.getMinutes().toString().padStart(2,"0")}–${end.getHours().toString().padStart(2,"0")}:${end.getMinutes().toString().padStart(2,"0")} ${b.purpose ?? ""}`}
+                          >
+                            <span className="truncate">{b.purpose ?? b.status}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 );
               })}
             </div>
 
             {/* Legend */}
-            <div className="flex gap-3 mt-3 pt-2 border-t border-slate-100">
-              {[["CONFIRMED", "bg-blue-500", "ยืนยันแล้ว"], ["PENDING", "bg-amber-400", "รออนุมัติ"], ["CHECKED_IN", "bg-emerald-500", "เช็คอินแล้ว"]].map(([, bg, label]) => (
-                <div key={label} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <span className={`w-2.5 h-2.5 rounded-sm ${bg}`} />{label}
+            <div className="flex gap-3 mt-2.5 pt-2 border-t border-slate-100">
+              {[["bg-blue-500", "ยืนยันแล้ว"], ["bg-amber-400", "รออนุมัติ"], ["bg-emerald-500", "เช็คอินแล้ว"]].map(([bg, label]) => (
+                <div key={label} className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                  <span className={`w-2 h-2 rounded-sm shrink-0 ${bg}`} />{label}
                 </div>
               ))}
             </div>
