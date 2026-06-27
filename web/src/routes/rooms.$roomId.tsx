@@ -440,7 +440,7 @@ function RoomDetailPage() {
 const CAL_HOUR_START = 8;
 const CAL_HOUR_END = 16;
 const CAL_HOURS = Array.from({ length: CAL_HOUR_END - CAL_HOUR_START + 1 }, (_, i) => CAL_HOUR_START + i);
-const DAYS = ["จ", "อ", "พ", "พฤ", "ศ", "ส", "อา"];
+const DAYS = ["จ", "อ", "พ", "พฤ", "ศ"];
 const STATUS_COLOR: Record<string, string> = {
   CONFIRMED: "bg-blue-500 text-white",
   PENDING: "bg-amber-400 text-white",
@@ -471,7 +471,7 @@ function WeeklyCalendar({ roomId }: { roomId: string }) {
     staleTime: 60_000,
   });
 
-  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => {
+  const days = useMemo(() => Array.from({ length: 5 }, (_, i) => {
     const d = new Date(weekStart);
     d.setDate(d.getDate() + i);
     return d;
