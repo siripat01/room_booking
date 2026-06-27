@@ -104,7 +104,7 @@ function PricingPage() {
                 <Badge className="bg-blue-600 text-white">Pro</Badge>
                 <Zap className="w-4 h-4 text-blue-500" />
               </div>
-              <h2 className="text-2xl font-bold">฿99 <span className="text-base font-normal text-muted-foreground">/ เดือน</span></h2>
+              <h2 className="text-2xl font-bold">฿59 <span className="text-base font-normal text-muted-foreground">/ เดือน</span></h2>
               <p className="text-muted-foreground text-sm mt-1">สำหรับผู้ใช้งานขั้นสูง</p>
             </div>
             <ul className="space-y-2.5 flex-1 mb-6">
