@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { Badge } from "./ui/badge";
-import { CalendarDays, Home, LogOut, Settings, User } from "lucide-react";
+import { CalendarDays, Home, LogOut, Settings, User, Zap } from "lucide-react";
 import { toast } from "sonner";
 
 interface NavbarProps {
@@ -139,6 +139,17 @@ export function Navbar({ user }: NavbarProps) {
                     Admin Panel
                   </Link>
                 </DropdownMenuItem>
+              )}
+              {!isPro && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link to="/pricing" className="flex items-center gap-2 cursor-pointer text-blue-600 focus:text-blue-600">
+                      <Zap className="w-4 h-4" />
+                      อัปเกรดเป็น Pro
+                    </Link>
+                  </DropdownMenuItem>
+                </>
               )}
               <DropdownMenuSeparator />
               <DropdownMenuItem
