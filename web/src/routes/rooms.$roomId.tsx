@@ -502,7 +502,7 @@ function WeeklyCalendar({ roomId }: { roomId: string }) {
           </button>
           <span className="text-xs text-muted-foreground px-1 min-w-32 text-center">
             {weekStart.toLocaleDateString("th-TH", { day: "numeric", month: "short" })} –{" "}
-            {days[6].toLocaleDateString("th-TH", { day: "numeric", month: "short" })}
+            {days[4].toLocaleDateString("th-TH", { day: "numeric", month: "short" })}
           </span>
           <button
             onClick={() => setWeekStart((w) => { const d = new Date(w); d.setDate(d.getDate() + 7); return d; })}
