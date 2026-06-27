@@ -48,9 +48,9 @@ export const subscriptionRoutes = new Elysia()
         if (!sig || !webhookSecret) return status(400, { error: "Missing signature" });
 
         const rawBody = await request.text();
-        let event: ReturnType<typeof stripe.webhooks.constructEvent>;
+        let event: Awaited<ReturnType<typeof stripe.webhooks.constructEventAsync>>;
         try {
-            event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
+            event = await stripe.webhooks.constructEventAsync(rawBody, sig, webhookSecret);
         } catch (e: any) {
             return status(400, { error: `Webhook Error: ${e.message}` });
         }
