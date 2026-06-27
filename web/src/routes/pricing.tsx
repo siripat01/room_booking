@@ -1,5 +1,5 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useCurrentUser } from "../lib/useCurrentUser";
 import { sessionQuery } from "../lib/queries";
 import { Navbar } from "../components/Navbar";
@@ -39,7 +39,15 @@ const PRO_FEATURES = [
 
 function PricingPage() {
   const { user } = useCurrentUser();
-  const isPro = (user as any)?.plan === "PRO";
+  const { data: planData } = useQuery({
+    queryKey: ["my-plan"],
+    queryFn: async () => {
+      const res = await fetch("/api/users/me/plan", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed");
+      return res.json() as Promise<{ plan: string; planExpiresAt: string | null }>;
+    },
+  });
+  const isPro = planData?.plan === "PRO";
 
   const checkoutMutation = useMutation({
     mutationFn: async () => {
@@ -90,7 +98,7 @@ function PricingPage() {
               ))}
             </ul>
             <Button variant="outline" disabled className="w-full">
-              {!isPro ? "แผนปัจจุบัน" : "Free"}
+              {isPro ? "Free" : "แผนปัจจุบัน"}
             </Button>
           </div>
 
@@ -116,15 +124,20 @@ function PricingPage() {
               ))}
             </ul>
             {isPro ? (
-              <Button
-                className="w-full"
-                variant="outline"
-                onClick={() => portalMutation.mutate()}
-                disabled={portalMutation.isPending}
-              >
-                {portalMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                จัดการ Subscription
-              </Button>
+              <div className="space-y-2">
+                <div className="flex items-center justify-center gap-1.5 py-2 rounded-lg bg-blue-50 text-blue-700 text-sm font-medium">
+                  <CheckCircle2 className="w-4 h-4" /> แผนปัจจุบันของคุณ
+                </div>
+                <Button
+                  className="w-full"
+                  variant="outline"
+                  onClick={() => portalMutation.mutate()}
+                  disabled={portalMutation.isPending}
+                >
+                  {portalMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  จัดการ Subscription
+                </Button>
+              </div>
             ) : (
               <Button
                 className="w-full bg-blue-600 hover:bg-blue-700"
