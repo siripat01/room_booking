@@ -37,7 +37,7 @@ export class BookingService {
         throw new Error(`${isPro ? "Pro" : "Free"} plan จองล่วงหน้าได้ไม่เกิน ${maxDaysAhead} วัน`);
       }
 
-      const activeLimit = data.userRole === "teacherRole" ? 5 : isPro ? 10 : 3;
+      const activeLimit = isPro ? 10 : data.userRole === "teacherRole" ? 5 : 3;
       const activeCount = await this.prisma.booking.count({
         where: { userId: data.userId, status: { in: ["PENDING", "CONFIRMED"] } },
       });

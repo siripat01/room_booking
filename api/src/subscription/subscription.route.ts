@@ -26,6 +26,7 @@ export const subscriptionRoutes = new Elysia()
                     success_url: `${WEB_URL}/settings?plan=success`,
                     cancel_url: `${WEB_URL}/settings`,
                 });
+                if (!session.url) throw new Error("Stripe did not return a checkout URL");
                 return { url: session.url };
             })
             .post("/subscription/portal", async ({ user, status }) => {

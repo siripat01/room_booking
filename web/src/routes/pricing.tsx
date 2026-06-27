@@ -1,4 +1,4 @@
-import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useMutation } from "@tanstack/react-query";
 import { useCurrentUser } from "../lib/useCurrentUser";
 import { sessionQuery } from "../lib/queries";
