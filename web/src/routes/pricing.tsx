@@ -39,7 +39,6 @@ const PRO_FEATURES = [
 
 function PricingPage() {
   const { user } = useCurrentUser();
-  const router = useRouter();
   const isPro = (user as any)?.plan === "PRO";
 
   const checkoutMutation = useMutation({
