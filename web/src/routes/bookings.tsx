@@ -1,8 +1,8 @@
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useState } from "react";
-import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCurrentUser } from "../lib/useCurrentUser";
-import { sessionQuery, type BookingStatus, type Booking, type BookingListResponse } from "../lib/queries";
+import { sessionQuery, waitlistQuery, type BookingStatus, type Booking, type BookingListResponse, type WaitlistEntry } from "../lib/queries";
 import { app } from "../lib/api";
 import { Navbar } from "../components/Navbar";
 import { Badge } from "../components/ui/badge";
@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { QRCodeSVG } from "qrcode.react";
 import {
   CalendarDays, Clock, Users, Loader2,
-  XCircle, CheckCircle2, AlertCircle, Timer, MapPin, QrCode,
+  XCircle, CheckCircle2, AlertCircle, Timer, MapPin, QrCode, Bell,
 } from "lucide-react";
 import { LoadingCentered } from "../components/LoadingSpinner";
 import { toast } from "sonner";
@@ -53,6 +53,8 @@ const TAB_FILTERS: { label: string; statuses: BookingStatus[] | null }[] = [
   { label: "All",       statuses: null },
 ];
 
+const WAITLIST_TAB = TAB_FILTERS.length; // index 4
+
 type QRState = { bookingId: string; token: string; expiresAt: string; roomName: string } | null;
 
 function BookingsPage() {
@@ -62,14 +64,17 @@ function BookingsPage() {
   const [qrState, setQrState] = useState<QRState>(null);
   const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
 
+  const isWaitlistTab = activeTab === WAITLIST_TAB;
+
   const {
     data,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
-    isLoading: loading,
+    isLoading: bookingsLoading,
   } = useInfiniteQuery({
     queryKey: ["bookings", "list", activeTab],
+    enabled: !isWaitlistTab,
     initialPageParam: 1,
     queryFn: async ({ pageParam }) => {
       const { data, error } = await (app.api.bookings as any).get({
@@ -80,6 +85,11 @@ function BookingsPage() {
     },
     getNextPageParam: (lastPage: BookingListResponse) =>
       lastPage.page < lastPage.totalPages ? lastPage.page + 1 : undefined,
+  });
+
+  const { data: waitlistEntries = [], isLoading: waitlistLoading } = useQuery({
+    ...waitlistQuery(),
+    enabled: isWaitlistTab,
   });
 
   const bookings: Booking[] = data?.pages.flatMap((p) => p.bookings) ?? [];
@@ -97,6 +107,18 @@ function BookingsPage() {
     onError: () => toast.error("Could not cancel booking."),
   });
 
+  const leaveWaitlistMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/bookings/waitlist/${id}`, { method: "DELETE", credentials: "include" });
+      if (!res.ok) throw new Error("Failed to leave waitlist");
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["waitlist"] });
+      toast.success("ออกจากคิวรอแล้ว");
+    },
+    onError: () => toast.error("ไม่สามารถออกจากคิวรอได้"),
+  });
+
   const qrMutation = useMutation({
     mutationFn: async (booking: Booking) => {
       const res = await fetch(`/api/bookings/${booking.id}/qr`);
@@ -109,10 +131,12 @@ function BookingsPage() {
     onError: () => toast.error("Could not generate QR code."),
   });
 
-  const activeStatuses = TAB_FILTERS[activeTab].statuses;
+  const activeStatuses = isWaitlistTab ? null : TAB_FILTERS[activeTab].statuses;
   const displayed = activeStatuses
     ? bookings.filter((b) => (activeStatuses as string[]).includes(b.status))
     : bookings;
+
+  const loading = isWaitlistTab ? waitlistLoading : bookingsLoading;
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -125,7 +149,7 @@ function BookingsPage() {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 mb-6 bg-white rounded-lg border p-1">
+        <div className="flex gap-1 mb-6 bg-white rounded-lg border p-1 overflow-x-auto">
           {TAB_FILTERS.map((tab, i) => {
             const count = tab.statuses
               ? bookings.filter((b) => (tab.statuses as string[]).includes(b.status)).length
@@ -134,7 +158,7 @@ function BookingsPage() {
               <button
                 key={tab.label}
                 onClick={() => setActiveTab(i)}
-                className={`flex-1 px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                className={`flex-1 min-w-fit px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
                   activeTab === i
                     ? "bg-blue-600 text-white shadow-sm"
                     : "text-muted-foreground hover:text-slate-700"
@@ -151,12 +175,57 @@ function BookingsPage() {
               </button>
             );
           })}
+          {/* Waitlist tab — only shown to PRO users */}
+          {user?.plan === "PRO" && (
+            <button
+              onClick={() => setActiveTab(WAITLIST_TAB)}
+              className={`flex-1 min-w-fit px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap flex items-center justify-center gap-1 ${
+                activeTab === WAITLIST_TAB
+                  ? "bg-violet-600 text-white shadow-sm"
+                  : "text-muted-foreground hover:text-slate-700"
+              }`}
+            >
+              <Bell className="w-3 h-3" />
+              Waitlist
+              {waitlistEntries.length > 0 && (
+                <span className={`ml-0.5 rounded-full px-1.5 py-0.5 text-xs ${
+                  activeTab === WAITLIST_TAB ? "bg-white/20 text-white" : "bg-violet-100 text-violet-700"
+                }`}>
+                  {waitlistEntries.length}
+                </span>
+              )}
+            </button>
+          )}
         </div>
 
-        {/* Booking list */}
+        {/* Content */}
         {loading ? (
           <LoadingCentered />
-        ) :displayed.length === 0 ? (
+        ) : isWaitlistTab ? (
+          waitlistEntries.length === 0 ? (
+            <div className="text-center py-20 text-muted-foreground">
+              <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
+                <Bell className="w-8 h-8 opacity-40" />
+              </div>
+              <p className="font-semibold text-slate-700">ไม่มีรายการคิวรอ</p>
+              <p className="text-sm mt-1">เมื่อจองห้องที่เต็มแล้ว คุณสามารถเข้าคิวรอได้</p>
+              <Button asChild variant="link" className="mt-2 text-blue-600">
+                <Link to="/home">ดูห้องทั้งหมด</Link>
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {waitlistEntries.map((entry) => (
+                <WaitlistCard
+                  key={entry.id}
+                  entry={entry}
+                  onLeave={(id) => leaveWaitlistMutation.mutate(id)}
+                  leaving={leaveWaitlistMutation.isPending && leaveWaitlistMutation.variables === entry.id}
+                />
+              ))}
+            </div>
+          )
+        ) : displayed.length === 0 ? (
           <div className="text-center py-20 text-muted-foreground">
             <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
               <CalendarDays className="w-8 h-8 opacity-40" />
@@ -254,6 +323,82 @@ function BookingsPage() {
           )}
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+function WaitlistCard({
+  entry, onLeave, leaving,
+}: {
+  entry: WaitlistEntry;
+  onLeave: (id: string) => void;
+  leaving: boolean;
+}) {
+  const start = new Date(entry.startTime);
+  const end = new Date(entry.endTime);
+  const isPast = end < new Date();
+
+  const formatDate = (d: Date) =>
+    d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+  const formatTime = (d: Date) =>
+    d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+
+  return (
+    <div className="bg-white rounded-xl border border-l-4 border-l-violet-400 shadow-sm overflow-hidden">
+      <div className="p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap mb-3">
+              <h3 className="font-semibold text-slate-900">
+                {entry.room.name}
+              </h3>
+              <Badge className="bg-violet-50 text-violet-700 border-violet-200 flex items-center gap-1 text-xs">
+                <Bell className="w-3 h-3" /> คิวรอ
+              </Badge>
+              {isPast && (
+                <Badge variant="outline" className="text-xs text-slate-400">หมดเวลาแล้ว</Badge>
+              )}
+            </div>
+
+            <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-sm text-muted-foreground mb-2">
+              <span className="flex items-center gap-1.5">
+                <CalendarDays className="w-3.5 h-3.5 text-violet-500" />
+                {formatDate(start)}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-violet-500" />
+                {formatTime(start)} – {formatTime(end)}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5 text-violet-500" />
+                {entry.attendees} attendee{entry.attendees !== 1 ? "s" : ""}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5 text-violet-500" />
+                Floor {entry.room.floor}
+              </span>
+            </div>
+
+            {entry.purpose && (
+              <p className="text-sm text-muted-foreground line-clamp-1">
+                <span className="font-medium text-slate-600">Purpose:</span> {entry.purpose}
+              </p>
+            )}
+          </div>
+
+          {!isPast && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => onLeave(entry.id)}
+              disabled={leaving}
+              className="text-red-600 border-red-200 hover:bg-red-50 shrink-0"
+            >
+              {leaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "ออกจากคิว"}
+            </Button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -44,6 +44,45 @@ const bookingRoutes = new Elysia({ prefix: "/bookings" })
         { auth: true },
     )
     .get(
+        "/waitlist",
+        async ({ user }) => bookingService.getUserWaitlist(user.id),
+        { auth: true },
+    )
+    .post(
+        "/waitlist",
+        async ({ user, body, status }) => {
+            try {
+                return await bookingService.joinWaitlist({
+                    userId: user.id,
+                    roomId: body.roomId,
+                    startTime: new Date(body.startTime),
+                    endTime: new Date(body.endTime),
+                    attendees: body.attendees,
+                    purpose: body.purpose,
+                });
+            } catch (e: any) {
+                if (e.message === "Waitlist requires PRO plan") return status(403, { error: e.message });
+                if (e.message.startsWith("Already")) return status(409, { error: e.message });
+                throw e;
+            }
+        },
+        {
+            auth: true,
+            body: t.Object({
+                roomId: t.String(),
+                startTime: t.String(),
+                endTime: t.String(),
+                attendees: t.Number({ minimum: 1 }),
+                purpose: t.Optional(t.String()),
+            }),
+        },
+    )
+    .delete(
+        "/waitlist/:wId",
+        async ({ user, params: { wId } }) => bookingService.leaveWaitlist(wId, user.id),
+        { auth: true },
+    )
+    .get(
         "/:id",
         async ({ user, params: { id } }) => {
             return bookingService.getBookingById(id, user.id, user.role ?? "userRole");

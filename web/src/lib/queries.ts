@@ -247,6 +247,27 @@ export type ReportsOverview = {
   popularRooms: { room: { id: string; name: string; floor: string }; bookingCount: number }[];
 };
 
+export type WaitlistEntry = {
+  id: string;
+  roomId: string;
+  room: { name: string; floor: string };
+  startTime: string;
+  endTime: string;
+  attendees: number;
+  purpose?: string | null;
+  status: "WAITING" | "PROMOTED" | "CANCELLED";
+  createdAt: string;
+};
+
+export const waitlistQuery = () => ({
+  queryKey: ["waitlist"],
+  queryFn: async () => {
+    const res = await fetch("/api/bookings/waitlist", { credentials: "include" });
+    if (!res.ok) throw new Error("Failed to fetch waitlist");
+    return res.json() as Promise<WaitlistEntry[]>;
+  },
+});
+
 export type AdminDevice = {
   id: string;
   name: string;

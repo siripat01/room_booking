@@ -1,6 +1,6 @@
 import type { PrismaClient } from "../../generated/prisma/client";
 import { randomBytes, timingSafeEqual } from "crypto";
-import { sendBookingApproved, sendBookingRejected } from "../lib/email";
+import { sendBookingApproved, sendBookingRejected, sendBookingReminder30, sendBookingReminderCheckin, sendWaitlistPromoted } from "../lib/email";
 import { sendLineNotify } from "../lib/lineNotify";
 
 export class BookingService {
@@ -26,9 +26,14 @@ export class BookingService {
     }
 
     // Plan-based booking limit and advance window (skip for adminRole)
+    let isPro = false;
+    let dbUser: { plan: string; email: string; name: string; lineNotifyToken: string | null } | null = null;
     if (data.userRole !== "adminRole") {
-      const dbUser = await this.prisma.user.findUnique({ where: { id: data.userId }, select: { plan: true } });
-      const isPro = dbUser?.plan === "PRO";
+      dbUser = await this.prisma.user.findUnique({
+        where: { id: data.userId },
+        select: { plan: true, email: true, name: true, lineNotifyToken: true },
+      });
+      isPro = dbUser?.plan === "PRO";
 
       // Advance booking window
       const maxDaysAhead = isPro ? 30 : 3;
@@ -49,7 +54,7 @@ export class BookingService {
     }
 
     // Race-condition-safe conflict check inside a serializable transaction
-    return this.prisma.$transaction(
+    const booking = await this.prisma.$transaction(
       async (tx) => {
         const conflict = await tx.booking.findFirst({
           where: {
@@ -95,12 +100,44 @@ export class BookingService {
           },
           include: {
             room: { select: { name: true, floor: true } },
-            user: { select: { name: true, email: true } },
+            user: { select: { name: true, email: true, lineNotifyToken: true } },
           },
         });
       },
       { isolationLevel: "Serializable" },
     );
+
+    // Late-booking immediate reminders for PRO users with CONFIRMED status
+    if (isPro && dbUser && booking.status === "CONFIRMED") {
+      const now = new Date();
+      const minsUntilStart = (data.startTime.getTime() - now.getTime()) / 60_000;
+      const reminderData = {
+        userEmail: booking.user.email,
+        userName: booking.user.name,
+        roomName: booking.room.name,
+        roomFloor: booking.room.floor,
+        startTime: booking.startTime,
+        endTime: booking.endTime,
+        purpose: booking.purpose,
+      };
+      const updates: { reminder30SentAt?: Date; reminderCheckinSentAt?: Date } = {};
+
+      if (minsUntilStart <= 35 && minsUntilStart > 0) {
+        sendBookingReminder30(reminderData);
+        if (dbUser.lineNotifyToken) sendLineNotify(dbUser.lineNotifyToken, `⏰ ห้อง ${booking.room.name} จะเริ่มใน 30 นาที`);
+        updates.reminder30SentAt = now;
+      }
+      if (minsUntilStart <= 5 && minsUntilStart > -10) {
+        sendBookingReminderCheckin(reminderData);
+        if (dbUser.lineNotifyToken) sendLineNotify(dbUser.lineNotifyToken, `🏁 เช็คอินห้อง ${booking.room.name} ได้แล้ว!`);
+        updates.reminderCheckinSentAt = now;
+      }
+      if (Object.keys(updates).length > 0) {
+        this.prisma.booking.update({ where: { id: booking.id }, data: updates }).catch(console.error);
+      }
+    }
+
+    return booking;
   }
 
   private async expireStaleBookings() {
@@ -177,10 +214,14 @@ export class BookingService {
     if (!["PENDING", "CONFIRMED"].includes(booking.status))
       throw new Error("Cannot cancel this booking");
 
-    return this.prisma.booking.update({
+    const updated = await this.prisma.booking.update({
       where: { id },
       data: { status: "CANCELLED", cancelledAt: new Date(), cancelReason },
     });
+
+    await this.promoteWaitlist(booking.roomId, booking.startTime, booking.endTime);
+
+    return updated;
   }
 
   async approveBooking(id: string, adminId: string) {
@@ -242,6 +283,9 @@ export class BookingService {
         sendLineNotify(updated.user.lineNotifyToken, `❌ การจองถูกปฏิเสธ\nห้อง: ${updated.room.name}\nเหตุผล: ${reason}`);
       }
     }
+
+    await this.promoteWaitlist(updated.roomId, updated.startTime, updated.endTime);
+
     return updated;
   }
 
@@ -324,5 +368,120 @@ export class BookingService {
       }),
     ]);
     return { totalRooms, pendingBookings, totalUsers, confirmedToday };
+  }
+
+  // ── Waitlist ──────────────────────────────────────────────────────────────────
+
+  private async promoteWaitlist(roomId: string, startTime: Date, endTime: Date) {
+    const promoted = await this.prisma.$transaction(async (tx) => {
+      const entry = await tx.waitlistEntry.findFirst({
+        where: { roomId, startTime, endTime, status: "WAITING" },
+        orderBy: { createdAt: "asc" },
+        include: {
+          user: { select: { name: true, email: true, lineNotifyToken: true } },
+          room: { select: { name: true, floor: true } },
+        },
+      });
+      if (!entry) return null;
+
+      // Race-condition guard: ensure slot is still free
+      const conflict = await tx.booking.findFirst({
+        where: {
+          roomId,
+          status: { in: ["PENDING", "CONFIRMED", "CHECKED_IN"] },
+          AND: [{ startTime: { lt: endTime } }, { endTime: { gt: startTime } }],
+        },
+      });
+      if (conflict) return null;
+
+      await tx.booking.create({
+        data: {
+          userId: entry.userId,
+          roomId,
+          startTime,
+          endTime,
+          attendees: entry.attendees,
+          purpose: entry.purpose,
+          status: "CONFIRMED",
+          approvedAt: new Date(),
+          approvedBy: entry.userId,
+        },
+      });
+
+      await tx.waitlistEntry.update({
+        where: { id: entry.id },
+        data: { status: "PROMOTED", notifiedAt: new Date() },
+      });
+
+      return entry;
+    }, { isolationLevel: "Serializable" });
+
+    if (!promoted) return;
+
+    sendWaitlistPromoted({
+      userEmail: promoted.user.email,
+      userName: promoted.user.name,
+      roomName: promoted.room.name,
+      roomFloor: promoted.room.floor,
+      startTime,
+      endTime,
+    });
+    if (promoted.user.lineNotifyToken) {
+      sendLineNotify(promoted.user.lineNotifyToken, `✅ คุณได้รับการเลื่อนขึ้นจากรายการรอ ห้อง ${promoted.room.name}`);
+    }
+  }
+
+  async joinWaitlist(data: {
+    userId: string;
+    roomId: string;
+    startTime: Date;
+    endTime: Date;
+    attendees: number;
+    purpose?: string;
+  }) {
+    const user = await this.prisma.user.findUnique({ where: { id: data.userId }, select: { plan: true } });
+    if (user?.plan !== "PRO") throw new Error("Waitlist requires PRO plan");
+
+    const existing = await this.prisma.waitlistEntry.findFirst({
+      where: { userId: data.userId, roomId: data.roomId, startTime: data.startTime, endTime: data.endTime, status: "WAITING" },
+    });
+    if (existing) throw new Error("Already on waitlist for this slot");
+
+    const activeBooking = await this.prisma.booking.findFirst({
+      where: { userId: data.userId, roomId: data.roomId, startTime: data.startTime, endTime: data.endTime, status: { in: ["PENDING", "CONFIRMED"] } },
+    });
+    if (activeBooking) throw new Error("Already have a booking for this slot");
+
+    return this.prisma.waitlistEntry.create({
+      data: {
+        userId: data.userId,
+        roomId: data.roomId,
+        startTime: data.startTime,
+        endTime: data.endTime,
+        attendees: data.attendees,
+        purpose: data.purpose,
+      },
+      include: { room: { select: { name: true, floor: true } } },
+    });
+  }
+
+  async leaveWaitlist(id: string, userId: string) {
+    const entry = await this.prisma.waitlistEntry.findUnique({ where: { id } });
+    if (!entry) throw new Error("Waitlist entry not found");
+    if (entry.userId !== userId) throw new Error("Unauthorized");
+    if (entry.status !== "WAITING") throw new Error("Cannot cancel a non-waiting entry");
+
+    return this.prisma.waitlistEntry.update({
+      where: { id },
+      data: { status: "CANCELLED" },
+    });
+  }
+
+  async getUserWaitlist(userId: string) {
+    return this.prisma.waitlistEntry.findMany({
+      where: { userId, status: "WAITING" },
+      include: { room: { select: { name: true, floor: true } } },
+      orderBy: { createdAt: "asc" },
+    });
   }
 }

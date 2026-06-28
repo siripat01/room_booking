@@ -77,18 +77,50 @@ export async function sendBookingRejected(data: BookingEmailData & { reason?: st
   });
 }
 
-export async function sendBookingReminder(data: BookingEmailData) {
+export async function sendBookingReminder30(data: BookingEmailData) {
   if (!canSend()) return;
   await send({
     from: FROM!,
     to: data.userEmail,
-    subject: `⏰ แจ้งเตือน: การจองของคุณจะเริ่มใน 1 ชั่วโมง — ${data.roomName}`,
+    subject: `⏰ การจองของคุณจะเริ่มใน 30 นาที — ${data.roomName}`,
     html: `
       <p>เรียน ${data.userName},</p>
-      <p>การจองห้อง <strong>${data.roomName}</strong> (ชั้น ${data.roomFloor}) ของคุณจะเริ่มใน <strong>1 ชั่วโมง</strong></p>
+      <p>การจองห้อง <strong>${data.roomName}</strong> (ชั้น ${data.roomFloor}) ของคุณจะเริ่มใน <strong>30 นาที</strong></p>
       <p>เวลา: ${formatDate(data.startTime)}</p>
       ${data.purpose ? `<p>หัวข้อ: ${data.purpose}</p>` : ""}
       <p>อย่าลืมเช็คอินด้วย QR Code ที่หน้าห้องด้วยนะคะ</p>
+    `,
+  });
+}
+
+export async function sendBookingReminderCheckin(data: BookingEmailData) {
+  if (!canSend()) return;
+  await send({
+    from: FROM!,
+    to: data.userEmail,
+    subject: `🏁 ถึงเวลาเช็คอินแล้ว! — ${data.roomName}`,
+    html: `
+      <p>เรียน ${data.userName},</p>
+      <p>ถึงเวลาเช็คอินห้อง <strong>${data.roomName}</strong> (ชั้น ${data.roomFloor}) แล้ว!</p>
+      <p>เวลา: ${formatDate(data.startTime)} – ${formatDate(data.endTime)}</p>
+      ${data.purpose ? `<p>หัวข้อ: ${data.purpose}</p>` : ""}
+      <p>กรุณาเช็คอินด้วย QR Code ที่หน้าห้องภายใน 10 นาที</p>
+    `,
+  });
+}
+
+export async function sendWaitlistPromoted(data: BookingEmailData) {
+  if (!canSend()) return;
+  await send({
+    from: FROM!,
+    to: data.userEmail,
+    subject: `✅ คุณได้รับการเลื่อนขึ้นจากรายการรอ — ${data.roomName}`,
+    html: `
+      <p>เรียน ${data.userName},</p>
+      <p>ยินดีด้วย! การจองห้อง <strong>${data.roomName}</strong> (ชั้น ${data.roomFloor}) ของคุณได้รับการ<strong>ยืนยันแล้ว</strong> เนื่องจากมีผู้ยกเลิกการจอง</p>
+      <p>วันและเวลา: ${formatDate(data.startTime)} – ${formatDate(data.endTime)}</p>
+      ${data.purpose ? `<p>หัวข้อ: ${data.purpose}</p>` : ""}
+      <p>กรุณาเช็คอินด้วย QR Code ที่หน้าห้องภายใน 10 นาทีหลังเวลาเริ่มต้น</p>
     `,
   });
 }

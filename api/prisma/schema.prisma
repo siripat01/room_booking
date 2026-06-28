@@ -42,7 +42,8 @@ model User {
   updatedAt     DateTime  @updatedAt
   accounts      Account[]
   sessions      Session[]
-  bookings      Booking[]
+  bookings         Booking[]
+  waitlistEntries  WaitlistEntry[]
 
   role       String?
   banned     Boolean?  @default(false)
@@ -124,9 +125,10 @@ model Room {
 
   // Relations
   // images        RoomImage[]
-  timeSlots TimeSlot[]
-  bookings  Booking[]
-  device    Device?
+  timeSlots       TimeSlot[]
+  bookings        Booking[]
+  waitlistEntries WaitlistEntry[]
+  device          Device?
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -188,6 +190,10 @@ model Booking {
   cancelledAt  DateTime? @map("cancelled_at")
   cancelReason String?   @map("cancel_reason")
 
+  // Reminder tracking (PRO only)
+  reminder30SentAt      DateTime? @map("reminder_30_sent_at")
+  reminderCheckinSentAt DateTime? @map("reminder_checkin_sent_at")
+
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
@@ -243,4 +249,33 @@ model RoomClosure {
 
   @@index([roomId, date])
   @@map("room_closures")
+}
+
+// ─────────────────────────────────────────────
+// WAITLIST
+// ─────────────────────────────────────────────
+
+enum WaitlistStatus {
+  WAITING
+  PROMOTED
+  CANCELLED
+}
+
+model WaitlistEntry {
+  id        String         @id @default(uuid())
+  userId    String         @map("user_id")
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roomId    String         @map("room_id")
+  room      Room           @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  startTime DateTime       @map("start_time")
+  endTime   DateTime       @map("end_time")
+  attendees Int
+  purpose   String?
+  status    WaitlistStatus @default(WAITING)
+  notifiedAt DateTime?     @map("notified_at")
+  createdAt DateTime       @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([roomId, startTime, endTime, status])
+  @@map("waitlist_entries")
 }

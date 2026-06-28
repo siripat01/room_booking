@@ -2,7 +2,7 @@ import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCurrentUser } from "../lib/useCurrentUser";
-import { roomQuery, roomAvailabilityQuery, sessionQuery } from "../lib/queries";
+import { roomQuery, roomAvailabilityQuery, sessionQuery, waitlistQuery } from "../lib/queries";
 import { app } from "../lib/api";
 import { Navbar } from "../components/Navbar";
 import { Button } from "../components/ui/button";
@@ -14,7 +14,7 @@ import { Separator } from "../components/ui/separator";
 import { Textarea } from "../components/ui/textarea";
 import {
   ArrowLeft, Building2, Users, Monitor, PenSquare, Tv, Wind, Wifi,
-  CalendarDays, Clock, CheckCircle2, Timer, Loader2, MapPin, ChevronLeft, ChevronRight,
+  CalendarDays, Clock, CheckCircle2, Timer, Loader2, MapPin, ChevronLeft, ChevronRight, Bell,
 } from "lucide-react";
 import { LoadingCentered } from "../components/LoadingSpinner";
 import { toast } from "sonner";
@@ -74,6 +74,8 @@ function RoomDetailPage() {
   const { data: room, isLoading: roomLoading } = useQuery(roomQuery(roomId));
   const [booking, setBooking] = useState<BookingResult | null>(null);
   const [conflictAlts, setConflictAlts] = useState<{ startTime: string; endTime: string }[]>([]);
+  const [waitlisted, setWaitlisted] = useState(false);
+  const [conflictSlot, setConflictSlot] = useState<{ startTime: string; endTime: string } | null>(null);
 
   const today = new Date().toLocaleDateString("en-CA");
   const [form, setForm] = useState({
@@ -139,9 +141,52 @@ function RoomDetailPage() {
     },
     onError: (err: any) => {
       if (err?.alternatives?.length) {
+        // Save the originally requested slot so waitlist mutation can use it
+        const slot = SLOTS.find((s) => s.start === form.slot);
+        if (slot) {
+          setConflictSlot({
+            startTime: new Date(`${form.date}T${slot.start}:00`).toISOString(),
+            endTime: new Date(`${form.date}T${slot.end}:00`).toISOString(),
+          });
+        }
         setConflictAlts(err.alternatives);
       } else {
         toast.error(err?.message ?? "Booking failed. Please try again.");
+      }
+    },
+  });
+
+  const waitlistMutation = useMutation({
+    mutationFn: async () => {
+      if (!conflictSlot) throw new Error("No slot selected");
+      const res = await fetch("/api/bookings/waitlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          roomId,
+          startTime: conflictSlot.startTime,
+          endTime: conflictSlot.endTime,
+          attendees: parseInt(form.attendees),
+          purpose: form.purpose || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error ?? "Failed to join waitlist");
+      }
+      return data;
+    },
+    onSuccess: () => {
+      setWaitlisted(true);
+      setConflictAlts([]);
+      qc.invalidateQueries({ queryKey: ["waitlist"] });
+    },
+    onError: (err: any) => {
+      if (err?.message?.includes("PRO")) {
+        toast.error("ฟีเจอร์ Waitlist สำหรับผู้ใช้ PRO เท่านั้น");
+      } else {
+        toast.error(err?.message ?? "ไม่สามารถเข้าคิวรอได้");
       }
     },
   });
@@ -294,6 +339,24 @@ function RoomDetailPage() {
                       ).join(", ")} เท่านั้น
                     </p>
                   </div>
+                ) : waitlisted ? (
+                  <div className="py-6 text-center space-y-4">
+                    <div className="w-16 h-16 rounded-full mx-auto flex items-center justify-center bg-violet-50">
+                      <Bell className="w-8 h-8 text-violet-500" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-slate-800">อยู่ในคิวรอแล้ว!</p>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        เราจะแจ้งเตือนและยืนยันการจองอัตโนมัติเมื่อมีที่ว่าง
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-2 pt-1">
+                      <Button onClick={() => { setWaitlisted(false); setConflictSlot(null); }} variant="outline">ลองจองเวลาอื่น</Button>
+                      <Button asChild className="bg-blue-600 hover:bg-blue-700">
+                        <Link to="/bookings">ดูรายการของฉัน</Link>
+                      </Button>
+                    </div>
+                  </div>
                 ) : booking ? (
                   <div className="py-6 text-center space-y-4">
                     <div className={`w-16 h-16 rounded-full mx-auto flex items-center justify-center ${
@@ -410,9 +473,9 @@ function RoomDetailPage() {
                                 onClick={() => {
                                   const d = s.toLocaleDateString("en-CA");
                                   const start = `${s.getHours().toString().padStart(2,"0")}:${s.getMinutes().toString().padStart(2,"0")}`;
-                                  const end = `${e.getHours().toString().padStart(2,"0")}:${e.getMinutes().toString().padStart(2,"0")}`;
                                   setForm((f) => ({ ...f, date: d, slot: start }));
                                   setConflictAlts([]);
+                                  setConflictSlot(null);
                                   toast.info(`เลือก ${fmt(s)}–${fmt(e)} แล้ว`);
                                 }}
                                 className="w-full text-left px-3 py-1.5 rounded-md border border-amber-200 bg-white hover:bg-amber-100 text-sm text-amber-800 transition-colors"
@@ -422,6 +485,23 @@ function RoomDetailPage() {
                             );
                           })}
                         </div>
+                        {user?.plan === "PRO" && conflictSlot && (
+                          <div className="pt-1.5 border-t border-amber-200">
+                            <p className="text-xs text-amber-600 mb-1.5">หรือเข้าคิวรอสำหรับช่วงเวลานี้</p>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="w-full border-amber-300 text-amber-700 hover:bg-amber-100"
+                              onClick={() => waitlistMutation.mutate()}
+                              disabled={waitlistMutation.isPending}
+                            >
+                              {waitlistMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+                              <Bell className="w-3.5 h-3.5 mr-1.5" />
+                              เข้าคิวรอ (Waitlist)
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </form>
