@@ -60,6 +60,7 @@ function BookingsPage() {
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState(0);
   const [qrState, setQrState] = useState<QRState>(null);
+  const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
 
   const {
     data,
@@ -172,7 +173,7 @@ function BookingsPage() {
               <BookingCard
                 key={booking.id}
                 booking={booking}
-                onCancel={(id) => cancelMutation.mutate(id)}
+                onCancel={(id) => setConfirmCancelId(id)}
                 cancelling={cancelMutation.isPending && cancelMutation.variables === booking.id}
                 onShowQR={() => qrMutation.mutate(booking)}
                 qrLoading={qrMutation.isPending && qrMutation.variables?.id === booking.id}
@@ -202,6 +203,29 @@ function BookingsPage() {
           </div>
         )}
       </main>
+
+      {/* Cancel confirmation */}
+      <Dialog open={!!confirmCancelId} onOpenChange={(o) => { if (!o) setConfirmCancelId(null); }}>
+        <DialogContent className="max-w-xs">
+          <DialogHeader>
+            <DialogTitle>Cancel this booking?</DialogTitle>
+            <DialogDescription>This can't be undone. The time slot will open up for others.</DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-2 justify-end mt-2">
+            <Button variant="outline" onClick={() => setConfirmCancelId(null)}>Keep it</Button>
+            <Button
+              variant="destructive"
+              disabled={cancelMutation.isPending}
+              onClick={() => {
+                if (confirmCancelId) cancelMutation.mutate(confirmCancelId);
+                setConfirmCancelId(null);
+              }}
+            >
+              {cancelMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Cancel booking"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!qrState} onOpenChange={(o) => { if (!o) setQrState(null); }}>
         <DialogContent className="max-w-xs text-center">

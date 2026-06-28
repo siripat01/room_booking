@@ -10,7 +10,7 @@ import { Separator } from "../components/ui/separator";
 import { Badge } from "../components/ui/badge";
 import {
   Mail, Shield, LogOut, CalendarDays, Loader2,
-  CheckCircle2, Clock, XCircle,
+  CheckCircle2, Clock, XCircle, Building2,
 } from "lucide-react";
 import { LoadingCentered } from "../components/LoadingSpinner";
 import { toast } from "sonner";
@@ -113,13 +113,13 @@ function ProfilePage() {
             { label: "Pending", value: stats.pending, icon: Clock, color: "text-amber-600", bg: "bg-amber-50" },
             { label: "Cancelled", value: stats.cancelled, icon: XCircle, color: "text-red-500", bg: "bg-red-50" },
           ].map(({ label, value, icon: Icon, color, bg }) => (
-            <div key={label} className="bg-white rounded-xl border p-4 text-center shadow-sm">
+            <Link key={label} to="/bookings" className="bg-white rounded-xl border p-4 text-center shadow-sm hover:shadow-md transition-shadow block">
               <div className={`w-9 h-9 rounded-lg ${bg} flex items-center justify-center mx-auto mb-2`}>
                 <Icon className={`w-4.5 h-4.5 ${color}`} />
               </div>
               <p className="text-2xl font-bold text-slate-800">{value}</p>
               <p className="text-xs text-muted-foreground mt-0.5">{label} Bookings</p>
-            </div>
+            </Link>
           ))}
         </div>
 
@@ -168,7 +168,7 @@ function ProfilePage() {
           </Button>
           <Button asChild variant="outline" className="w-full justify-start gap-2">
             <Link to="/home">
-              <Shield className="w-4 h-4 text-blue-600" /> Browse Rooms
+              <Building2 className="w-4 h-4 text-blue-600" /> Browse Rooms
             </Link>
           </Button>
           <Separator />

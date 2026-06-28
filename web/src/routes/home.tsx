@@ -8,7 +8,7 @@ import { Input } from "../components/ui/input";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import {
-  Search, Users, Building2, Wifi, Monitor, Wind, PenSquare, Tv, SlidersHorizontal,
+  Search, Users, Building2, Wifi, Monitor, Wind, PenSquare, Tv, SlidersHorizontal, Lock,
 } from "lucide-react";
 
 export const Route = createFileRoute("/home")({
@@ -51,15 +51,17 @@ const AMENITY_LABELS: Record<string, string> = {
   wifi: "Wi-Fi",
 };
 
-const CAPACITY_FILTERS = [
-  { label: "Any size", value: 0 },
-  { label: "1–5", value: 5 },
-  { label: "6–10", value: 10 },
-  { label: "11–20", value: 20 },
-  { label: "20+", value: 999 },
+type CapFilter = { min: number; max: number };
+const NO_CAP: CapFilter = { min: 0, max: Infinity };
+
+const CAPACITY_FILTERS: { label: string; filter: CapFilter }[] = [
+  { label: "Any size", filter: NO_CAP },
+  { label: "1–5",     filter: { min: 1, max: 5 } },
+  { label: "6–10",    filter: { min: 6, max: 10 } },
+  { label: "11–20",   filter: { min: 11, max: 20 } },
+  { label: "20+",     filter: { min: 21, max: Infinity } },
 ];
 
-// Gradient palettes for room cards
 const CARD_GRADIENTS = [
   "from-blue-500 to-blue-700",
   "from-violet-500 to-violet-700",
@@ -69,13 +71,27 @@ const CARD_GRADIENTS = [
   "from-teal-500 to-teal-700",
 ];
 
+function roomGradient(id: string): string {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
+  return CARD_GRADIENTS[Math.abs(h) % CARD_GRADIENTS.length];
+}
+
+const ROLE_LABELS: Record<string, string> = {
+  teacherRole: "Teachers",
+  adminRole:   "Admins",
+  userRole:    "Students",
+};
+
 function HomePage() {
   const { user } = useCurrentUser();
   const { data: rooms = [], isLoading: loading } = useQuery(roomsQuery());
   const [search, setSearch] = useState("");
-  const [capacityFilter, setCapacityFilter] = useState(0);
+  const [capFilter, setCapFilter] = useState<CapFilter>(NO_CAP);
   const [amenityFilter, setAmenityFilter] = useState<string[]>([]);
   const [floorFilter, setFloorFilter] = useState("");
+
+  const userRole = user?.isAdmin ? "adminRole" : user?.isTeacher ? "teacherRole" : "userRole";
 
   const floors = Array.from(new Set(rooms.map((r) => r.floor))).sort();
   const allAmenities = Array.from(new Set(rooms.flatMap((r) => r.amenities)));
@@ -84,7 +100,8 @@ function HomePage() {
     if (!room.isActive) return false;
     if (search && !room.name.toLowerCase().includes(search.toLowerCase()) &&
       !room.floor.toLowerCase().includes(search.toLowerCase())) return false;
-    if (capacityFilter && room.capacity > capacityFilter) return false;
+    if ((capFilter.min > 0 || capFilter.max !== Infinity) &&
+      (room.capacity < capFilter.min || room.capacity > capFilter.max)) return false;
     if (floorFilter && room.floor !== floorFilter) return false;
     if (amenityFilter.length > 0 && !amenityFilter.every((a) => room.amenities.includes(a))) return false;
     return true;
@@ -96,7 +113,18 @@ function HomePage() {
     );
   }
 
-  const activeFiltersCount = (capacityFilter > 0 ? 1 : 0) + amenityFilter.length + (floorFilter ? 1 : 0);
+  function clearFilters() {
+    setCapFilter(NO_CAP);
+    setAmenityFilter([]);
+    setFloorFilter("");
+  }
+
+  const isCapFiltered = capFilter.min > 0 || capFilter.max !== Infinity;
+  const activeFiltersCount = (isCapFiltered ? 1 : 0) + amenityFilter.length + (floorFilter ? 1 : 0);
+
+  const pillBase = "px-3 py-1 rounded-full text-xs border transition-colors font-medium";
+  const pillActive = "bg-blue-600 text-white border-blue-600";
+  const pillIdle = "border-slate-200 text-slate-600 hover:border-blue-300 hover:text-blue-600 bg-white";
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -113,47 +141,56 @@ function HomePage() {
 
         {/* Search + filters */}
         <div className="bg-white rounded-xl border p-4 mb-8 space-y-3">
-          <div className="flex gap-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                placeholder="Search rooms…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 bg-slate-50 border-slate-200"
-              />
-            </div>
-            {floors.length > 0 && (
-              <select
-                value={floorFilter}
-                onChange={(e) => setFloorFilter(e.target.value)}
-                className="h-10 rounded-md border border-slate-200 bg-slate-50 px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 text-slate-700"
-              >
-                <option value="">All Floors</option>
-                {floors.map((f) => (
-                  <option key={f} value={f}>Floor {f}</option>
-                ))}
-              </select>
-            )}
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Search rooms…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 bg-slate-50 border-slate-200"
+            />
           </div>
 
+          {/* Filter pills */}
           <div className="flex items-center gap-2 flex-wrap">
+            {/* Floor */}
+            {floors.length > 0 && (
+              <>
+                <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
+                  <Building2 className="w-3.5 h-3.5" /> Floor
+                </span>
+                {floors.map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setFloorFilter(floorFilter === f ? "" : f)}
+                    className={`${pillBase} ${floorFilter === f ? pillActive : pillIdle}`}
+                  >
+                    {f}
+                  </button>
+                ))}
+                <span className="text-slate-300 select-none">|</span>
+              </>
+            )}
+
+            {/* Capacity */}
             <span className="text-xs text-muted-foreground flex items-center gap-1.5 font-medium">
               <SlidersHorizontal className="w-3.5 h-3.5" /> Capacity
             </span>
-            {CAPACITY_FILTERS.map((f) => (
-              <button
-                key={f.value}
-                onClick={() => setCapacityFilter(capacityFilter === f.value ? 0 : f.value)}
-                className={`px-3 py-1 rounded-full text-xs border transition-colors font-medium ${
-                  capacityFilter === f.value
-                    ? "bg-blue-600 text-white border-blue-600"
-                    : "border-slate-200 text-slate-600 hover:border-blue-300 hover:text-blue-600 bg-white"
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
+            {CAPACITY_FILTERS.map((f) => {
+              const selected = capFilter.min === f.filter.min && capFilter.max === f.filter.max;
+              return (
+                <button
+                  key={f.label}
+                  onClick={() => setCapFilter(selected ? NO_CAP : f.filter)}
+                  className={`${pillBase} ${selected ? pillActive : pillIdle}`}
+                >
+                  {f.label}
+                </button>
+              );
+            })}
+
+            {/* Amenities */}
             {allAmenities.length > 0 && (
               <>
                 <span className="text-slate-300 select-none">|</span>
@@ -161,10 +198,8 @@ function HomePage() {
                   <button
                     key={a}
                     onClick={() => toggleAmenity(a)}
-                    className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs border transition-colors font-medium ${
-                      amenityFilter.includes(a)
-                        ? "bg-blue-600 text-white border-blue-600"
-                        : "border-slate-200 text-slate-600 hover:border-blue-300 hover:text-blue-600 bg-white"
+                    className={`flex items-center gap-1.5 ${pillBase} ${
+                      amenityFilter.includes(a) ? pillActive : pillIdle
                     }`}
                   >
                     {AMENITY_ICONS[a]}
@@ -173,9 +208,10 @@ function HomePage() {
                 ))}
               </>
             )}
+
             {activeFiltersCount > 0 && (
               <button
-                onClick={() => { setCapacityFilter(0); setAmenityFilter([]); setFloorFilter(""); }}
+                onClick={clearFilters}
                 className="text-xs text-blue-600 hover:text-blue-800 underline ml-1"
               >
                 Clear filters
@@ -199,15 +235,15 @@ function HomePage() {
             <p className="font-semibold text-slate-700">No rooms found</p>
             <p className="text-sm mt-1">Try adjusting your filters</p>
             {activeFiltersCount > 0 && (
-              <Button variant="link" onClick={() => { setCapacityFilter(0); setAmenityFilter([]); setFloorFilter(""); setSearch(""); }} className="mt-2 text-blue-600">
+              <Button variant="link" onClick={() => { clearFilters(); setSearch(""); }} className="mt-2 text-blue-600">
                 Clear all filters
               </Button>
             )}
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {filtered.map((room, i) => (
-              <RoomCard key={room.id} room={room} gradient={CARD_GRADIENTS[i % CARD_GRADIENTS.length]} />
+            {filtered.map((room) => (
+              <RoomCard key={room.id} room={room} gradient={roomGradient(room.id)} userRole={userRole} />
             ))}
           </div>
         )}
@@ -216,18 +252,28 @@ function HomePage() {
   );
 }
 
-function RoomCard({ room, gradient }: { room: Room; gradient: string }) {
+function RoomCard({ room, gradient, userRole }: { room: Room; gradient: string; userRole: string }) {
+  const canBook = !room.allowedRoles?.length || room.allowedRoles.includes(userRole);
+  const restrictionLabel = !canBook && room.allowedRoles?.length
+    ? room.allowedRoles.map((r) => ROLE_LABELS[r] ?? r).join(" & ") + " only"
+    : null;
+
   return (
-    <div className="bg-white rounded-xl border overflow-hidden hover:shadow-md transition-shadow group flex flex-col">
+    <div className={`bg-white rounded-xl border overflow-hidden hover:shadow-md transition-shadow group flex flex-col ${!canBook ? "opacity-75" : ""}`}>
       {/* Gradient header */}
       <div className={`h-36 bg-gradient-to-br ${gradient} flex items-end p-4 relative`}>
         <div className="absolute inset-0 opacity-10">
           <Building2 className="w-32 h-32 absolute -right-4 -top-4 text-white" />
         </div>
-        <div className="relative">
+        <div className="relative flex items-center gap-2">
           <Badge className="bg-white/20 text-white border-white/30 text-xs backdrop-blur-sm">
             Floor {room.floor}
           </Badge>
+          {restrictionLabel && (
+            <Badge className="bg-black/30 text-white border-transparent text-xs backdrop-blur-sm flex items-center gap-1">
+              <Lock className="w-2.5 h-2.5" /> {restrictionLabel}
+            </Badge>
+          )}
         </div>
       </div>
 
@@ -259,11 +305,19 @@ function RoomCard({ room, gradient }: { room: Room; gradient: string }) {
         )}
 
         <div className="mt-auto">
-          <Button asChild className="w-full bg-blue-600 hover:bg-blue-700 text-white" size="sm">
-            <Link to="/rooms/$roomId" params={{ roomId: room.id }}>
-              View & Book
-            </Link>
-          </Button>
+          {canBook ? (
+            <Button asChild className="w-full bg-blue-600 hover:bg-blue-700 text-white" size="sm">
+              <Link to="/rooms/$roomId" params={{ roomId: room.id }}>
+                View & Book
+              </Link>
+            </Button>
+          ) : (
+            <Button asChild variant="outline" className="w-full text-slate-500" size="sm">
+              <Link to="/rooms/$roomId" params={{ roomId: room.id }}>
+                View Details
+              </Link>
+            </Button>
+          )}
         </div>
       </div>
     </div>
