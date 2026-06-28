@@ -61,7 +61,7 @@ export function Navbar({ user }: NavbarProps) {
             activeProps={{ className: "text-foreground bg-accent" }}
           >
             <Home className="w-4 h-4" />
-            <span>Rooms</span>
+            <span className="hidden sm:inline">Rooms</span>
           </Link>
           <Link
             to="/bookings"
@@ -69,7 +69,7 @@ export function Navbar({ user }: NavbarProps) {
             activeProps={{ className: "text-foreground bg-accent" }}
           >
             <CalendarDays className="w-4 h-4" />
-            <span>My Bookings</span>
+            <span className="hidden sm:inline">My Bookings</span>
           </Link>
           {isAdmin && (
             <Link
@@ -78,7 +78,7 @@ export function Navbar({ user }: NavbarProps) {
               activeProps={{ className: "text-foreground bg-accent" }}
             >
               <Settings className="w-4 h-4" />
-              <span>Admin</span>
+              <span className="hidden sm:inline">Admin</span>
             </Link>
           )}
         </nav>
