@@ -1,7 +1,7 @@
 import { Resend } from "resend";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
-const FROM = process.env.EMAIL_FROM ?? "noreply@room-booking.kmitl.ac.th";
+const FROM = process.env.EMAIL_FROM;
 
 type BookingEmailData = {
   userEmail: string;
@@ -12,6 +12,27 @@ type BookingEmailData = {
   endTime: Date;
   purpose?: string | null;
 };
+
+function canSend(): boolean {
+  if (!process.env.RESEND_API_KEY) {
+    console.warn("[email] Skipped: RESEND_API_KEY not set");
+    return false;
+  }
+  if (!FROM) {
+    console.warn("[email] Skipped: EMAIL_FROM not set — set it in Fly.io secrets to enable email");
+    return false;
+  }
+  return true;
+}
+
+async function send(payload: Parameters<typeof resend.emails.send>[0]) {
+  const { data, error } = await resend.emails.send(payload);
+  if (error) {
+    console.error("[email] Send failed:", error);
+  } else {
+    console.log("[email] Sent:", data?.id, "→", payload.to);
+  }
+}
 
 function formatDate(d: Date) {
   return d.toLocaleString("th-TH", {
@@ -26,9 +47,9 @@ function formatDate(d: Date) {
 }
 
 export async function sendBookingApproved(data: BookingEmailData) {
-  if (!process.env.RESEND_API_KEY) return;
-  await resend.emails.send({
-    from: FROM,
+  if (!canSend()) return;
+  await send({
+    from: FROM!,
     to: data.userEmail,
     subject: `✅ การจองของคุณได้รับการอนุมัติ — ${data.roomName}`,
     html: `
@@ -38,13 +59,13 @@ export async function sendBookingApproved(data: BookingEmailData) {
       ${data.purpose ? `<p>หัวข้อ: ${data.purpose}</p>` : ""}
       <p>กรุณาเช็คอินด้วย QR Code ภายใน 10 นาทีหลังเวลาเริ่มต้น</p>
     `,
-  }).catch(console.error);
+  });
 }
 
 export async function sendBookingRejected(data: BookingEmailData & { reason?: string | null }) {
-  if (!process.env.RESEND_API_KEY) return;
-  await resend.emails.send({
-    from: FROM,
+  if (!canSend()) return;
+  await send({
+    from: FROM!,
     to: data.userEmail,
     subject: `❌ การจองของคุณถูกปฏิเสธ — ${data.roomName}`,
     html: `
@@ -53,13 +74,13 @@ export async function sendBookingRejected(data: BookingEmailData & { reason?: st
       ${data.reason ? `<p>เหตุผล: ${data.reason}</p>` : ""}
       <p>คุณสามารถทำการจองใหม่ได้ที่ระบบ Room Booking</p>
     `,
-  }).catch(console.error);
+  });
 }
 
 export async function sendBookingReminder(data: BookingEmailData) {
-  if (!process.env.RESEND_API_KEY) return;
-  await resend.emails.send({
-    from: FROM,
+  if (!canSend()) return;
+  await send({
+    from: FROM!,
     to: data.userEmail,
     subject: `⏰ แจ้งเตือน: การจองของคุณจะเริ่มใน 1 ชั่วโมง — ${data.roomName}`,
     html: `
@@ -69,5 +90,5 @@ export async function sendBookingReminder(data: BookingEmailData) {
       ${data.purpose ? `<p>หัวข้อ: ${data.purpose}</p>` : ""}
       <p>อย่าลืมเช็คอินด้วย QR Code ที่หน้าห้องด้วยนะคะ</p>
     `,
-  }).catch(console.error);
+  });
 }
