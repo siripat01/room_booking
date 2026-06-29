@@ -7,6 +7,7 @@ import { app } from "../lib/api";
 import { Navbar } from "../components/Navbar";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { Calendar } from "../components/ui/calendar";
 import { Label } from "../components/ui/label";
 import { Badge } from "../components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -390,12 +391,25 @@ function RoomDetailPage() {
                 ) : (
                   <form onSubmit={handleBooking} className="space-y-4">
                     <div className="space-y-1.5">
-                      <Label htmlFor="date" className="text-sm font-medium flex items-center gap-1.5">
+                      <Label className="text-sm font-medium flex items-center gap-1.5">
                         <CalendarDays className="w-3.5 h-3.5 text-blue-600" /> วันที่
                       </Label>
-                      <Input id="date" type="date" min={today} value={form.date}
-                        onChange={(e) => setForm((f) => ({ ...f, date: e.target.value, slot: "" }))} required
-                        className="border-slate-200" />
+                      <div className="border rounded-md flex justify-center">
+                        <Calendar
+                          mode="single"
+                          selected={form.date ? new Date(form.date + "T00:00:00") : undefined}
+                          onSelect={(d) => {
+                            if (!d) return;
+                            setForm((f) => ({ ...f, date: d.toLocaleDateString("en-CA"), slot: "" }));
+                          }}
+                          disabled={(d) => {
+                            const day = d.getDay();
+                            const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+                            return d < todayStart || day === 0 || day === 6;
+                          }}
+                          initialFocus
+                        />
+                      </div>
                     </div>
 
                     <div className="space-y-1.5">
