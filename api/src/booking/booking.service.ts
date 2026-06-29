@@ -19,6 +19,9 @@ export class BookingService {
   }) {
     if (data.startTime < new Date()) throw new Error("Cannot book a room in the past");
 
+    const day = data.startTime.getDay(); // 0=Sun, 6=Sat
+    if (day === 0 || day === 6) throw new Error("ไม่สามารถจองห้องในวันเสาร์-อาทิตย์ได้");
+
     // Check room's allowed roles
     const room = await this.prisma.room.findUnique({ where: { id: data.roomId }, select: { allowedRoles: true } });
     if (room && room.allowedRoles.length > 0 && data.userRole && !room.allowedRoles.includes(data.userRole)) {
