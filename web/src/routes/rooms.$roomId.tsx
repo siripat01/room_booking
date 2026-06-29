@@ -46,6 +46,8 @@ const SLOTS = [
   { start: "13:00", end: "14:00" },
   { start: "14:00", end: "15:00" },
   { start: "15:00", end: "16:00" },
+  { start: "16:00", end: "17:00" },
+  { start: "17:00", end: "18:00" },
 ] as const;
 
 const AMENITY_ICONS: Record<string, React.ReactNode> = {
@@ -518,7 +520,7 @@ function RoomDetailPage() {
 // ── Weekly Calendar ───────────────────────────────────────────────────────────
 
 const CAL_HOUR_START = 8;
-const CAL_HOUR_END = 16;
+const CAL_HOUR_END = 18;
 const CAL_HOURS = Array.from({ length: CAL_HOUR_END - CAL_HOUR_START + 1 }, (_, i) => CAL_HOUR_START + i);
 const DAYS = ["จ", "อ", "พ", "พฤ", "ศ"];
 const STATUS_COLOR: Record<string, string> = {
