@@ -203,6 +203,8 @@ model Booking {
   @@index([status])
   @@index([startTime, endTime])
   @@index([roomId, startTime, endTime, status])
+  @@index([status, startTime])
+  @@index([status, endTime])
   @@map("bookings")
 }
 

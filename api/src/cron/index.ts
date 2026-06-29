@@ -1,3 +1,4 @@
+import cron from "node-cron";
 import prisma from "../../libs/db";
 import { sendBookingReminder30, sendBookingReminderCheckin } from "../lib/email";
 import { sendLineNotify } from "../lib/lineNotify";
@@ -56,9 +57,9 @@ async function runReminderEmails() {
         await prisma.booking.update({ where: { id: b.id }, data: { reminder30SentAt: now } });
     }
 
-    // Check-in reminder: startTime in [now-5min, now+5min], PRO users, not yet sent
+    // Check-in reminder: startTime in [now-5min, now+10min], PRO users, not yet sent
     const fromCheckin = new Date(now.getTime() - 5 * 60 * 1000);
-    const toCheckin = new Date(now.getTime() + 5 * 60 * 1000);
+    const toCheckin = new Date(now.getTime() + 10 * 60 * 1000);
 
     const bookingsCheckin = await prisma.booking.findMany({
         where: {
@@ -93,6 +94,12 @@ async function runReminderEmails() {
 
 export function startCronJobs() {
     runAutoCheckout().catch(console.error);
-    setInterval(() => runAutoCheckout().catch(console.error), 5 * 60 * 1000);
-    setInterval(() => runReminderEmails().catch(console.error), 5 * 60 * 1000);
+
+    cron.schedule("*/2 * * * *", () => {
+        runAutoCheckout().catch(console.error);
+    });
+
+    cron.schedule("*/2 * * * *", () => {
+        runReminderEmails().catch(console.error);
+    });
 }
