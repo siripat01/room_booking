@@ -1,7 +1,6 @@
 import { Resend } from "resend";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
-const FROM = process.env.EMAIL_FROM;
 
 type BookingEmailData = {
   userEmail: string;
@@ -18,7 +17,7 @@ function canSend(): boolean {
     console.warn("[email] Skipped: RESEND_API_KEY not set");
     return false;
   }
-  if (!FROM) {
+  if (!process.env.EMAIL_FROM) {
     console.warn("[email] Skipped: EMAIL_FROM not set — set it in Fly.io secrets to enable email");
     return false;
   }
@@ -49,7 +48,7 @@ function formatDate(d: Date) {
 export async function sendBookingApproved(data: BookingEmailData) {
   if (!canSend()) return;
   await send({
-    from: FROM!,
+    from: process.env.EMAIL_FROM!,
     to: data.userEmail,
     subject: `✅ การจองของคุณได้รับการอนุมัติ — ${data.roomName}`,
     html: `
@@ -65,7 +64,7 @@ export async function sendBookingApproved(data: BookingEmailData) {
 export async function sendBookingRejected(data: BookingEmailData & { reason?: string | null }) {
   if (!canSend()) return;
   await send({
-    from: FROM!,
+    from: process.env.EMAIL_FROM!,
     to: data.userEmail,
     subject: `❌ การจองของคุณถูกปฏิเสธ — ${data.roomName}`,
     html: `
@@ -80,7 +79,7 @@ export async function sendBookingRejected(data: BookingEmailData & { reason?: st
 export async function sendBookingReminder30(data: BookingEmailData) {
   if (!canSend()) return;
   await send({
-    from: FROM!,
+    from: process.env.EMAIL_FROM!,
     to: data.userEmail,
     subject: `⏰ การจองของคุณจะเริ่มใน 30 นาที — ${data.roomName}`,
     html: `
@@ -96,7 +95,7 @@ export async function sendBookingReminder30(data: BookingEmailData) {
 export async function sendBookingReminderCheckin(data: BookingEmailData) {
   if (!canSend()) return;
   await send({
-    from: FROM!,
+    from: process.env.EMAIL_FROM!,
     to: data.userEmail,
     subject: `🏁 ถึงเวลาเช็คอินแล้ว! — ${data.roomName}`,
     html: `
@@ -112,7 +111,7 @@ export async function sendBookingReminderCheckin(data: BookingEmailData) {
 export async function sendWaitlistPromoted(data: BookingEmailData) {
   if (!canSend()) return;
   await send({
-    from: FROM!,
+    from: process.env.EMAIL_FROM!,
     to: data.userEmail,
     subject: `✅ คุณได้รับการเลื่อนขึ้นจากรายการรอ — ${data.roomName}`,
     html: `
