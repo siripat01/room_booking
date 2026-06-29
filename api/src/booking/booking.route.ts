@@ -110,7 +110,7 @@ const bookingRoutes = new Elysia({ prefix: "/bookings" })
                 if (e.message?.includes("overlapping")) {
                     return setStatus(409, { error: e.message, alternatives: e.alternatives ?? [] });
                 }
-                throw e;
+                return setStatus(400, { error: e.message ?? "Booking failed" });
             }
         },
         {
