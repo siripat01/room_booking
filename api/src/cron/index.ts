@@ -11,7 +11,7 @@ async function runAutoCheckout() {
     });
 
     const expired = await prisma.booking.updateMany({
-        where: { status: "CONFIRMED", startTime: { lt: new Date(now.getTime() - 10 * 60 * 1000) } },
+        where: { status: "CONFIRMED", startTime: { lt: new Date(now.getTime() - 12 * 60 * 1000) } },
         data: { status: "EXPIRED" },
     });
 
@@ -60,9 +60,9 @@ async function runReminderEmails() {
         await prisma.booking.update({ where: { id: b.id }, data: { reminder30SentAt: now } });
     }
 
-    // Check-in reminder: startTime in [now-5min, now+10min], PRO users, not yet sent
+    // Check-in reminder: startTime in [now-5min, now+5min], PRO users, not yet sent
     const fromCheckin = new Date(now.getTime() - 5 * 60 * 1000);
-    const toCheckin = new Date(now.getTime() + 10 * 60 * 1000);
+    const toCheckin = new Date(now.getTime() + 5 * 60 * 1000);
 
     const bookingsCheckin = await prisma.booking.findMany({
         where: {

@@ -19,8 +19,8 @@ export class BookingService {
   }) {
     if (data.startTime < new Date()) throw new Error("Cannot book a room in the past");
 
-    const day = data.startTime.getDay(); // 0=Sun, 6=Sat
-    if (day === 0 || day === 6) throw new Error("ไม่สามารถจองห้องในวันเสาร์-อาทิตย์ได้");
+    const bangkokDay = new Date(data.startTime.toLocaleString("en-US", { timeZone: "Asia/Bangkok" })).getDay();
+    if (bangkokDay === 0 || bangkokDay === 6) throw new Error("ไม่สามารถจองห้องในวันเสาร์-อาทิตย์ได้");
 
     // Check room's allowed roles
     const room = await this.prisma.room.findUnique({ where: { id: data.roomId }, select: { allowedRoles: true } });
@@ -122,7 +122,7 @@ export class BookingService {
         endTime: booking.endTime,
         purpose: booking.purpose,
       };
-      sendBookingApproved(reminderData);
+      sendBookingApproved(reminderData).catch(console.error);
       if (dbUser.lineNotifyToken) {
         const start = booking.startTime.toLocaleString("th-TH", { timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" });
         sendLineNotify(dbUser.lineNotifyToken, `✅ การจองได้รับการยืนยัน\nห้อง: ${booking.room.name}\nเวลา: ${start}`);
@@ -130,7 +130,7 @@ export class BookingService {
 
       const updates: { reminder30SentAt?: Date; reminderCheckinSentAt?: Date } = {};
 
-      if (minsUntilStart <= 35 && minsUntilStart > 0) {
+      if (minsUntilStart > 5 && minsUntilStart <= 35) {
         sendBookingReminder30(reminderData);
         if (dbUser.lineNotifyToken) sendLineNotify(dbUser.lineNotifyToken, `⏰ ห้อง ${booking.room.name} จะเริ่มใน 30 นาที`);
         updates.reminder30SentAt = now;
@@ -381,12 +381,15 @@ export class BookingService {
   // ── Waitlist ──────────────────────────────────────────────────────────────────
 
   private async promoteWaitlist(roomId: string, startTime: Date, endTime: Date) {
+    const bangkokDay = new Date(startTime.toLocaleString("en-US", { timeZone: "Asia/Bangkok" })).getDay();
+    if (bangkokDay === 0 || bangkokDay === 6) return;
+
     const promoted = await this.prisma.$transaction(async (tx) => {
       const entry = await tx.waitlistEntry.findFirst({
         where: { roomId, startTime, endTime, status: "WAITING" },
         orderBy: { createdAt: "asc" },
         include: {
-          user: { select: { name: true, email: true, lineNotifyToken: true } },
+          user: { select: { name: true, email: true, lineNotifyToken: true, plan: true } },
           room: { select: { name: true, floor: true } },
         },
       });
@@ -426,16 +429,38 @@ export class BookingService {
 
     if (!promoted) return;
 
-    sendWaitlistPromoted({
+    const reminderData = {
       userEmail: promoted.user.email,
       userName: promoted.user.name,
       roomName: promoted.room.name,
       roomFloor: promoted.room.floor,
       startTime,
       endTime,
-    });
+    };
+
+    sendWaitlistPromoted(reminderData);
     if (promoted.user.lineNotifyToken) {
       sendLineNotify(promoted.user.lineNotifyToken, `✅ คุณได้รับการเลื่อนขึ้นจากรายการรอ ห้อง ${promoted.room.name}`);
+    }
+
+    if (promoted.user.plan === "PRO") {
+      const now = new Date();
+      const minsUntilStart = (startTime.getTime() - now.getTime()) / 60_000;
+      const updates: { reminder30SentAt?: Date; reminderCheckinSentAt?: Date } = {};
+      if (minsUntilStart > 5 && minsUntilStart <= 35) {
+        sendBookingReminder30(reminderData);
+        if (promoted.user.lineNotifyToken) sendLineNotify(promoted.user.lineNotifyToken, `⏰ ห้อง ${promoted.room.name} จะเริ่มใน 30 นาที`);
+        updates.reminder30SentAt = now;
+      }
+      if (minsUntilStart <= 5 && minsUntilStart > -10) {
+        sendBookingReminderCheckin(reminderData);
+        if (promoted.user.lineNotifyToken) sendLineNotify(promoted.user.lineNotifyToken, `🏁 เช็คอินห้อง ${promoted.room.name} ได้แล้ว!`);
+        updates.reminderCheckinSentAt = now;
+      }
+      if (Object.keys(updates).length > 0) {
+        const b = await this.prisma.booking.findFirst({ where: { userId: promoted.userId, roomId, startTime, endTime, status: "CONFIRMED" } });
+        if (b) this.prisma.booking.update({ where: { id: b.id }, data: updates }).catch(console.error);
+      }
     }
   }
 
