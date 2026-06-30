@@ -94,6 +94,7 @@ async function runReminderEmails() {
 
 export function startCronJobs() {
     runAutoCheckout().catch(console.error);
+    runReminderEmails().catch(console.error);
 
     cron.schedule("*/2 * * * *", () => {
         runAutoCheckout().catch(console.error);
