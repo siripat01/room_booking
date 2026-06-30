@@ -1,4 +1,3 @@
-import cron from "node-cron";
 import prisma from "../../libs/db";
 import { sendBookingReminder30, sendBookingReminderCheckin } from "../lib/email";
 import { sendLineNotify } from "../lib/lineNotify";
@@ -6,22 +5,24 @@ import { sendLineNotify } from "../lib/lineNotify";
 async function runAutoCheckout() {
     const now = new Date();
 
-    // CHECKED_IN bookings past endTime → COMPLETED
-    await prisma.booking.updateMany({
+    const completed = await prisma.booking.updateMany({
         where: { status: "CHECKED_IN", endTime: { lt: now } },
         data: { status: "COMPLETED", checkedOutAt: now },
     });
 
-    // CONFIRMED bookings where check-in window (startTime + 10 min) has passed → EXPIRED
-    const expireThreshold = new Date(now.getTime() - 10 * 60 * 1000);
-    await prisma.booking.updateMany({
-        where: { status: "CONFIRMED", startTime: { lt: expireThreshold } },
+    const expired = await prisma.booking.updateMany({
+        where: { status: "CONFIRMED", startTime: { lt: new Date(now.getTime() - 10 * 60 * 1000) } },
         data: { status: "EXPIRED" },
     });
+
+    if (completed.count > 0 || expired.count > 0) {
+        console.log(`[cron] checkout: completed=${completed.count} expired=${expired.count}`);
+    }
 }
 
 async function runReminderEmails() {
     const now = new Date();
+    console.log("[cron] runReminderEmails at", now.toISOString());
 
     // 30-min reminder: startTime in [now+25min, now+35min], PRO users, not yet sent
     const from30 = new Date(now.getTime() + 25 * 60 * 1000);
@@ -39,6 +40,8 @@ async function runReminderEmails() {
             user: { select: { name: true, email: true, lineNotifyToken: true } },
         },
     });
+
+    console.log(`[cron] 30-min window ${from30.toISOString()} – ${to30.toISOString()}: ${bookings30.length} booking(s)`);
 
     for (const b of bookings30) {
         const reminderData = {
@@ -74,6 +77,8 @@ async function runReminderEmails() {
         },
     });
 
+    console.log(`[cron] checkin window ${fromCheckin.toISOString()} – ${toCheckin.toISOString()}: ${bookingsCheckin.length} booking(s)`);
+
     for (const b of bookingsCheckin) {
         const reminderData = {
             userEmail: b.user.email,
@@ -93,14 +98,10 @@ async function runReminderEmails() {
 }
 
 export function startCronJobs() {
+    console.log("[cron] starting cron jobs");
     runAutoCheckout().catch(console.error);
     runReminderEmails().catch(console.error);
 
-    cron.schedule("*/2 * * * *", () => {
-        runAutoCheckout().catch(console.error);
-    });
-
-    cron.schedule("*/2 * * * *", () => {
-        runReminderEmails().catch(console.error);
-    });
+    setInterval(() => runAutoCheckout().catch(console.error), 2 * 60 * 1000);
+    setInterval(() => runReminderEmails().catch(console.error), 2 * 60 * 1000);
 }
