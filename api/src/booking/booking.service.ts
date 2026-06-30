@@ -110,7 +110,7 @@ export class BookingService {
       { isolationLevel: "Serializable" },
     );
 
-    // Late-booking immediate reminders for PRO users with CONFIRMED status
+    // Confirmation + late-booking immediate reminders for PRO users with CONFIRMED status
     if (isPro && dbUser && booking.status === "CONFIRMED") {
       const now = new Date();
       const minsUntilStart = (data.startTime.getTime() - now.getTime()) / 60_000;
@@ -123,6 +123,12 @@ export class BookingService {
         endTime: booking.endTime,
         purpose: booking.purpose,
       };
+      sendBookingApproved(reminderData);
+      if (dbUser.lineNotifyToken) {
+        const start = booking.startTime.toLocaleString("th-TH", { timeZone: "Asia/Bangkok", hour: "2-digit", minute: "2-digit", day: "numeric", month: "short" });
+        sendLineNotify(dbUser.lineNotifyToken, `✅ การจองได้รับการยืนยัน\nห้อง: ${booking.room.name}\nเวลา: ${start}`);
+      }
+
       const updates: { reminder30SentAt?: Date; reminderCheckinSentAt?: Date } = {};
 
       if (minsUntilStart <= 35 && minsUntilStart > 0) {
