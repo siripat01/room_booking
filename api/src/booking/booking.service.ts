@@ -28,16 +28,15 @@ export class BookingService {
       throw new Error("คุณไม่มีสิทธิ์จองห้องนี้");
     }
 
-    // Plan-based booking limit and advance window (skip for adminRole)
-    let isPro = false;
-    let dbUser: { plan: string; email: string; name: string; lineNotifyToken: string | null } | null = null;
-    if (data.userRole !== "adminRole") {
-      dbUser = await this.prisma.user.findUnique({
+    // Always fetch user for email/notifications; skip booking limits for adminRole
+    let dbUser: { plan: string; email: string; name: string; lineNotifyToken: string | null } | null =
+      await this.prisma.user.findUnique({
         where: { id: data.userId },
         select: { plan: true, email: true, name: true, lineNotifyToken: true },
       });
-      isPro = dbUser?.plan === "PRO";
+    let isPro = dbUser?.plan === "PRO";
 
+    if (data.userRole !== "adminRole") {
       // Advance booking window
       const maxDaysAhead = isPro ? 30 : 3;
       const maxStartTime = new Date(Date.now() + maxDaysAhead * 24 * 3600_000);
