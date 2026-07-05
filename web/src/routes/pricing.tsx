@@ -1,3 +1,4 @@
+import { useTitle } from "../lib/useTitle";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useCurrentUser } from "../lib/useCurrentUser";
@@ -38,6 +39,7 @@ const PRO_FEATURES = [
 ];
 
 function PricingPage() {
+  useTitle("Pricing");
   const { user } = useCurrentUser();
   const { data: planData } = useQuery({
     queryKey: ["my-plan"],

@@ -1,5 +1,6 @@
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useState, useEffect, useMemo } from "react";
+import { useTitle } from "../lib/useTitle";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCurrentUser } from "../lib/useCurrentUser";
 import { roomQuery, roomAvailabilityQuery, sessionQuery, waitlistQuery } from "../lib/queries";
@@ -202,6 +203,7 @@ function RoomDetailPage() {
     bookMutation.mutate();
   }
 
+  useTitle(room?.name);
   const autoConfirm = user?.isTeacher || user?.isAdmin;
   const userRole = user?.isAdmin ? "adminRole" : user?.isTeacher ? "teacherRole" : "userRole";
   const canBook = !room || !room.allowedRoles?.length || room.allowedRoles.includes(userRole);

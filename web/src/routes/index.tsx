@@ -5,6 +5,7 @@ import { Button } from "../components/ui/button";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Building2, CalendarDays, CheckCircle2, Users } from "lucide-react";
+import { useTitle } from "../lib/useTitle";
 
 export const Route = createFileRoute("/")({
   beforeLoad: async ({ context: { queryClient }, search }) => {
@@ -45,6 +46,7 @@ const FEATURES = [
 function LoginPage() {
   const { redirect: redirectPath } = Route.useSearch();
   const [loading, setLoading] = useState(false);
+  useTitle("ยินดีต้อนรับ");
 
   async function handleGoogleLogin() {
     setLoading(true);

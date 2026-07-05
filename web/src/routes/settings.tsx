@@ -1,3 +1,4 @@
+import { useTitle } from "../lib/useTitle";
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -27,6 +28,7 @@ export const Route = createFileRoute("/settings")({
 });
 
 function SettingsPage() {
+  useTitle("Settings");
   const { user } = useCurrentUser();
   const qc = useQueryClient();
   const [tokenInput, setTokenInput] = useState("");

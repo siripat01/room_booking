@@ -1,3 +1,4 @@
+import { useTitle } from "../lib/useTitle";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useState } from "react";
 import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -58,6 +59,7 @@ const WAITLIST_TAB = TAB_FILTERS.length; // index 4
 type QRState = { bookingId: string; token: string; expiresAt: string; roomName: string } | null;
 
 function BookingsPage() {
+  useTitle("My Bookings");
   const { user } = useCurrentUser();
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState(0);

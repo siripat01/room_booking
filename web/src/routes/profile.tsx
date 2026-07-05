@@ -1,3 +1,4 @@
+import { useTitle } from "../lib/useTitle";
 import { createFileRoute, useRouter, Link, redirect } from "@tanstack/react-router";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -34,6 +35,7 @@ export const Route = createFileRoute("/profile")({
 });
 
 function ProfilePage() {
+  useTitle("Profile");
   const router = useRouter();
   const { user, loading } = useCurrentUser();
   const [signingOut, setSigningOut] = useState(false);

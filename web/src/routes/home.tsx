@@ -1,5 +1,6 @@
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useState } from "react";
+import { useTitle } from "../lib/useTitle";
 import { useQuery } from "@tanstack/react-query";
 import { useCurrentUser } from "../lib/useCurrentUser";
 import { roomsQuery, sessionQuery, type Room } from "../lib/queries";
@@ -86,6 +87,7 @@ const ROLE_LABELS: Record<string, string> = {
 function HomePage() {
   const { user } = useCurrentUser();
   const { data: rooms = [], isLoading: loading } = useQuery(roomsQuery());
+  useTitle("Find a Room");
   const [search, setSearch] = useState("");
   const [capFilter, setCapFilter] = useState<CapFilter>(NO_CAP);
   const [amenityFilter, setAmenityFilter] = useState<string[]>([]);
