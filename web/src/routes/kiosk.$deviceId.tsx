@@ -43,6 +43,10 @@ function fmtDate() {
   });
 }
 
+// Check-in window around a booking's startTime.
+const CHECKIN_OPENS_BEFORE_MS = 10 * 60 * 1000;
+const CHECKIN_GRACE_MS = 12 * 60 * 1000;
+
 async function kioskFetch(path: string, deviceKey: string, options?: RequestInit) {
   return fetch(`/api${path}`, {
     ...options,
@@ -290,13 +294,17 @@ function KioskPage() {
   const roomName = status?.device?.room?.name ?? "No Room Assigned";
   const floor = status?.device?.room?.floor;
 
-  // Camera is active only during check-in window: [startTime - 10min, startTime]
+  // Camera is active during the check-in window:
+  // [startTime - 10min, startTime + 12min]. The trailing grace must match the
+  // EXPIRED threshold in api/src/cron/index.ts, otherwise someone arriving on
+  // time (or slightly late) finds the camera already off.
   const checkInWindow = (() => {
     const next = status?.nextBooking;
     if (!next) return null;
     const start = new Date(next.startTime);
-    const opens = new Date(start.getTime() - 10 * 60 * 1000);
-    if (now >= opens && now < start) return { opens, closes: start };
+    const opens = new Date(start.getTime() - CHECKIN_OPENS_BEFORE_MS);
+    const closes = new Date(start.getTime() + CHECKIN_GRACE_MS);
+    if (now >= opens && now < closes) return { opens, closes };
     return null;
   })();
   const cameraActive = !!checkInWindow;
@@ -533,7 +541,7 @@ function KioskPage() {
                 <>
                   <p className="text-gray-600 text-xs">กล้องจะเปิดเมื่อถึงเวลาเช็คอิน</p>
                   <p className="text-gray-500 text-sm font-medium tabular-nums">
-                    {fmt(new Date(new Date(status.nextBooking.startTime).getTime() - 10 * 60 * 1000).toISOString())} น.
+                    {fmt(new Date(new Date(status.nextBooking.startTime).getTime() - CHECKIN_OPENS_BEFORE_MS).toISOString())} น.
                   </p>
                 </>
               ) : (

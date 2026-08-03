@@ -6,6 +6,10 @@ function generateDeviceKey(): string {
     return "dk_" + randomBytes(16).toString("hex");
 }
 
+// How long after startTime a booking can still be checked in.
+// Must stay in sync with the EXPIRED threshold in src/cron/index.ts.
+const CHECKIN_GRACE_MS = 12 * 60 * 1000;
+
 export class DeviceService {
     constructor(private prisma: PrismaClient) { }
 
@@ -117,11 +121,17 @@ export class DeviceService {
             include: { user: { select: { name: true, email: true } } },
         });
 
+        // Keep bookings that already started but are still within the check-in
+        // grace period, otherwise the kiosk loses sight of them at startTime and
+        // the camera shuts off while check-in is still allowed (see cron/index.ts).
+        const graceStart = new Date(now.getTime() - CHECKIN_GRACE_MS);
+
         const nextBooking = await this.prisma.booking.findFirst({
             where: {
                 roomId: device.roomId,
                 status: { in: ["CONFIRMED"] },
-                startTime: { gt: now },
+                startTime: { gt: graceStart },
+                endTime: { gt: now },
             },
             include: { user: { select: { name: true, email: true } } },
             orderBy: { startTime: "asc" },
