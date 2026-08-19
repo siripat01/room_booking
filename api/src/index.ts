@@ -39,7 +39,11 @@ const app = new Elysia({ prefix: "/api" })
   .use(reportRoutes)
   .use(subscriptionRoutes)
   .use(authRoutes)
-  .all("/health", () => "Healthy as fuck")
+  .get("/health", () => ({
+    status: "ok",
+    service: "roomflow-api",
+    timestamp: new Date().toISOString(),
+  }))
   .all("/version", () => process.env.APP_VERSION)
   .listen(3000);
 

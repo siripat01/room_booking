@@ -6,7 +6,8 @@
     "test:unit": "bun test src/booking/booking-policy.service.test.ts",
     "test:integration": "bun test test/booking-concurrency.integration.test.ts",
     "dev": "bun run --watch src/index.ts",
-    "migrate": "bun migrate.ts"
+    "start": "bun src/index.ts",
+    "migrate": "bun scripts/migrate.ts"
   },
   "dependencies": {
     "@better-auth/infra": "^0.2.10",
@@ -21,14 +22,14 @@
     "elysia": "latest",
     "node-cron": "^4.5.0",
     "pg": "^8.21.0",
+    "prisma": "^7.8.0",
     "resend": "^6.14.0",
     "stripe": "^22.3.0"
   },
   "devDependencies": {
     "@types/node-cron": "^3.0.11",
     "@types/pg": "^8.20.0",
-    "bun-types": "latest",
-    "prisma": "^7.8.0"
+    "bun-types": "latest"
   },
   "module": "src/index.js"
 }
