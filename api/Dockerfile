@@ -1,12 +1,12 @@
 # ========================================
 # Stage 1: Builder - Install all dependencies
 # ========================================
-FROM oven/bun:latest AS builder
+FROM oven/bun:1.3.14 AS builder
 
 WORKDIR /app
 
 COPY package.json bun.lock ./
-RUN bun install
+RUN bun install --frozen-lockfile
 
 COPY . .
 
@@ -17,7 +17,7 @@ RUN bun run prisma generate
 # ========================================
 # Stage 2: Production - Minimal runtime
 # ========================================
-FROM oven/bun:latest AS production
+FROM oven/bun:1.3.14 AS production
 
 WORKDIR /app
 
@@ -28,7 +28,7 @@ ENV BUN_ENV=production
 COPY --from=builder /app/package.json /app/bun.lock ./
 
 # Install production dependencies only
-RUN bun install --production
+RUN bun install --production --frozen-lockfile
 
 # Copy Prisma schema and generated client
 COPY --from=builder /app/prisma ./prisma
@@ -36,13 +36,13 @@ COPY --from=builder /app/generated ./generated
 
 # Copy source code and config
 COPY --from=builder /app/src ./src
+COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/tsconfig.json ./
 COPY --from=builder /app/libs ./libs
 COPY --from=builder /app/utils ./utils
 COPY --from=builder /app/prisma.config.ts ./
-COPY --from=builder /app/migrate.ts ./
 
 EXPOSE 3000
 
-# Run migrations then start the server
-CMD ["sh", "-c", "bun node_modules/.bin/prisma migrate deploy && bun src/index.ts"]
+# Fly runs database migrations once via release_command before replacing app machines.
+CMD ["bun", "run", "start"]
