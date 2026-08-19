@@ -13,15 +13,25 @@ const USER_SELECT = {
   _count: { select: { bookings: true } },
 };
 
+function withoutQrTokenHash<T extends { qrTokenHash: string | null }>(booking: T) {
+  const { qrTokenHash: _qrTokenHash, ...safeBooking } = booking;
+  return safeBooking;
+}
+
 export class UserService {
   constructor(private readonly prisma: PrismaClient) {}
+
+  private async assertHumanUser(id: string) {
+    const user = await this.prisma.user.findUnique({ where: { id }, select: { isSystem: true } });
+    if (!user || user.isSystem) throw new Error("User not found");
+  }
 
   async getUsers(params?: { search?: string; role?: string; isBanned?: boolean; page?: number; limit?: number }) {
     const page = params?.page ?? 1;
     const limit = params?.limit ?? 20;
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: any = { isSystem: false };
     if (params?.search) {
       where.OR = [
         { name: { contains: params.search, mode: "insensitive" } },
@@ -40,8 +50,8 @@ export class UserService {
   }
 
   async getUserById(id: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { id },
+    const user = await this.prisma.user.findFirst({
+      where: { id, isSystem: false },
       select: { ...USER_SELECT, updatedAt: true },
     });
     if (!user) throw new Error("User not found");
@@ -49,6 +59,7 @@ export class UserService {
   }
 
   async updateUser(id: string, data: { name?: string; image?: string }) {
+    await this.assertHumanUser(id);
     return this.prisma.user.update({
       where: { id },
       data,
@@ -59,9 +70,9 @@ export class UserService {
   async deleteUser(id: string) {
     const user = await this.prisma.user.findUnique({
       where: { id },
-      select: { id: true, _count: { select: { bookings: true } } },
+      select: { id: true, isSystem: true, _count: { select: { bookings: true } } },
     });
-    if (!user) throw new Error("User not found");
+    if (!user || user.isSystem) throw new Error("User not found");
     if (user._count.bookings > 0) {
       throw new Error("Cannot delete a user with booking history; ban the account instead");
     }
@@ -70,6 +81,7 @@ export class UserService {
   }
 
   async getUserBookings(id: string, params?: { page?: number; limit?: number }) {
+    await this.assertHumanUser(id);
     const page = params?.page ?? 1;
     const limit = params?.limit ?? 20;
     const skip = (page - 1) * limit;
@@ -85,12 +97,19 @@ export class UserService {
       this.prisma.booking.count({ where: { userId: id } }),
     ]);
 
-    return { bookings, total, page, limit, totalPages: Math.ceil(total / limit) };
+    return {
+      bookings: bookings.map(withoutQrTokenHash),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
   async updateUserRole(userId: string, role: string) {
     const allowed = ["userRole", "teacherRole", "adminRole"];
     if (!allowed.includes(role)) throw new Error("Invalid role");
+    await this.assertHumanUser(userId);
 
     return this.prisma.user.update({
       where: { id: userId },
@@ -100,6 +119,7 @@ export class UserService {
   }
 
   async banUser(userId: string, reason: string) {
+    await this.assertHumanUser(userId);
     return this.prisma.user.update({
       where: { id: userId },
       data: { banned: true, banReason: reason },
@@ -108,6 +128,7 @@ export class UserService {
   }
 
   async unbanUser(userId: string) {
+    await this.assertHumanUser(userId);
     return this.prisma.user.update({
       where: { id: userId },
       data: { banned: false, banReason: null, banExpires: null },

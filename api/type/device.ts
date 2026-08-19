@@ -7,5 +7,4 @@ export type CreateDeviceInput = {
 export type UpdateDeviceInput = {
     name?: string;
     roomId?: string | null;
-    isActive?: boolean;
 }

@@ -61,8 +61,10 @@ model User {
   sessions        Session[]
   bookings        Booking[]
   waitlistEntries WaitlistEntry[]
+  walkInDevice    Device?         @relation("DeviceWalkInPrincipal")
 
   role       String?
+  isSystem   Boolean   @default(false) @map("is_system")
   banned     Boolean?  @default(false)
   banReason  String?
   banExpires DateTime? @db.Timestamptz(3)
@@ -196,8 +198,12 @@ model Booking {
   approvedBy     String?   @map("approved_by") // admin user id
 
   // QR Code สำหรับ check-in
-  qrToken     String?   @unique @map("qr_token")
+  qrTokenHash String?   @unique @map("qr_token_hash")
   qrExpiresAt DateTime? @map("qr_expires_at") @db.Timestamptz(3)
+
+  // Auditable requester information for device-created walk-in bookings.
+  walkInRequesterName      String? @map("walk_in_requester_name")
+  walkInRequesterReference String? @map("walk_in_requester_reference")
 
   // Check-in / Check-out
   checkedInAt  DateTime? @map("checked_in_at") @db.Timestamptz(3)
@@ -258,9 +264,22 @@ model Device {
   roomId String? @unique @map("room_id")
   room   Room?   @relation(fields: [roomId], references: [id], onDelete: SetNull)
 
-  name      String // เช่น "Kiosk Room A101"
-  // Key สำหรับ authenticate device (ไม่ใช้ JWT ของ user)
-  deviceKey String @unique @map("device_key")
+  name String // เช่น "Kiosk Room A101"
+
+  // High-entropy credentials are stored as SHA-256 hashes. Plaintext is only
+  // returned when a credential is issued or rotated.
+  deviceKeyHash       String    @unique @map("device_key_hash")
+  deviceKeyPrefix     String    @map("device_key_prefix")
+  // Rolling-deploy compatibility sentinel; contains no credential material.
+  // Remove with the constrained legacy database column in a later migration.
+  legacyDeviceKey     String    @unique @map("device_key")
+  credentialVersion   Int       @default(1) @map("credential_version")
+  credentialRotatedAt DateTime  @default(now()) @map("credential_rotated_at") @db.Timestamptz(3)
+  revokedAt           DateTime? @map("revoked_at") @db.Timestamptz(3)
+
+  walkInPrincipalId String              @unique @map("walk_in_principal_id")
+  walkInPrincipal   User                @relation("DeviceWalkInPrincipal", fields: [walkInPrincipalId], references: [id], onDelete: Restrict)
+  pairingCodes      DevicePairingCode[]
 
   isActive   Boolean   @default(true) @map("is_active")
   lastSeenAt DateTime? @map("last_seen_at") @db.Timestamptz(3)
@@ -268,8 +287,34 @@ model Device {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  @@index([deviceKey])
+  @@index([lastSeenAt])
   @@map("devices")
+}
+
+model DevicePairingCode {
+  id         String    @id @default(uuid())
+  deviceId   String    @map("device_id")
+  device     Device    @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  codeHash   String    @unique @map("code_hash")
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(3)
+  consumedAt DateTime? @map("consumed_at") @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([deviceId, expiresAt])
+  @@index([expiresAt, consumedAt])
+  @@map("device_pairing_codes")
+}
+
+model RateLimitBucket {
+  scope           String   @map("scope")
+  subjectHash     String   @map("subject_hash")
+  windowStartedAt DateTime @map("window_started_at") @db.Timestamptz(3)
+  count           Int
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@id([scope, subjectHash])
+  @@index([updatedAt])
+  @@map("rate_limit_buckets")
 }
 
 model RoomClosure {

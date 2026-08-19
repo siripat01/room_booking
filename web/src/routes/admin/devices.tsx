@@ -30,12 +30,10 @@ export const Route = createFileRoute("/admin/devices")({
 });
 
 function computeStats(devices: AdminDevice[]) {
-  const oneMinAgo = new Date(Date.now() - 60_000);
   let online = 0, offline = 0, unassigned = 0;
   for (const d of devices) {
     if (!d.roomId) unassigned++;
-    if (!d.lastSeenAt) continue;
-    new Date(d.lastSeenAt) > oneMinAgo ? online++ : offline++;
+    d.onlineStatus === "online" ? online++ : offline++;
   }
   return { total: devices.length, online, offline, unassigned };
 }
@@ -95,11 +93,13 @@ function AdminDevicesPage() {
 
   const rotateKeyMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { data, error } = await (app.api as any).devices[id]["rotate-key"].patch();
+      const { data, error } = await (app.api as any).devices[id]["rotate-key"].post();
       if (error) throw error;
       return data;
     },
     onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["admin", "devices"] });
+      setRotateOpen(false);
       if (data?.deviceKey) {
         setNewKey(data.deviceKey);
         setNewKeyDeviceName(rotateTarget?.name ?? "");
@@ -108,6 +108,36 @@ function AdminDevicesPage() {
       toast.success("Device key rotated");
     },
     onError: () => toast.error("Failed to rotate key"),
+  });
+
+  const revokeMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/devices/${id}/revoke`, { method: "POST", credentials: "include" });
+      if (!res.ok) throw new Error("Failed to revoke device");
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "devices"] });
+      setDetailOpen(false);
+      toast.success("Device credential revoked");
+    },
+    onError: () => toast.error("Failed to revoke device credential"),
+  });
+
+  const reactivateMutation = useMutation({
+    mutationFn: async (device: AdminDevice) => {
+      const res = await fetch(`/api/devices/${device.id}/reactivate`, { method: "POST", credentials: "include" });
+      if (!res.ok) throw new Error("Failed to reactivate device");
+      return { ...(await res.json()), deviceName: device.name };
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["admin", "devices"] });
+      setDetailOpen(false);
+      setNewKey(data.deviceKey);
+      setNewKeyDeviceName(data.deviceName);
+      setKeyModalOpen(true);
+      toast.success("Device reactivated with a new key");
+    },
+    onError: () => toast.error("Failed to reactivate device"),
   });
 
   const deleteMutation = useMutation({
@@ -156,7 +186,7 @@ function AdminDevicesPage() {
     createdAt: "",
     updatedAt: "",
     device: (devices as AdminDevice[]).find((d) => d.roomId === r.id)
-      ? { id: "", name: "", roomId: r.id, isActive: true, lastSeenAt: null, createdAt: "", updatedAt: "", deviceKey: "", room: null }
+      ? { id: "", name: "", roomId: r.id, isActive: true, lastSeenAt: null, createdAt: "", updatedAt: "", deviceKeyPrefix: "", credentialVersion: 1, credentialRotatedAt: "", revokedAt: null, onlineStatus: "unknown", room: null }
       : null,
   }));
 
@@ -176,7 +206,11 @@ function AdminDevicesPage() {
     lastSeenAt: d.lastSeenAt ?? null,
     createdAt: d.createdAt,
     updatedAt: "",
-    deviceKey: "",
+    deviceKeyPrefix: d.deviceKeyPrefix,
+    credentialVersion: d.credentialVersion,
+    credentialRotatedAt: d.credentialRotatedAt,
+    revokedAt: d.revokedAt ?? null,
+    onlineStatus: d.onlineStatus,
     room: d.room ? { ...d.room, description: null, capacity: 0, amenities: [], isActive: true, createdAt: "", updatedAt: "", device: null } : null,
   });
 
@@ -262,10 +296,23 @@ function AdminDevicesPage() {
                           onClick={() => pairMutation.mutate(device.id)}>
                           Pair
                         </Button>
-                        <Button size="sm" variant="outline" className="h-7 text-xs"
-                          onClick={() => { setRotateTarget(device); setRotateOpen(true); }}>
-                          Rotate Key
-                        </Button>
+                        {!device.revokedAt && (
+                          <Button size="sm" variant="outline" className="h-7 text-xs"
+                            onClick={() => { setRotateTarget(device); setRotateOpen(true); }}>
+                            Rotate Key
+                          </Button>
+                        )}
+                        {device.revokedAt ? (
+                          <Button size="sm" variant="outline" className="h-7 text-xs text-green-700"
+                            onClick={() => reactivateMutation.mutate(device)}>
+                            Reactivate
+                          </Button>
+                        ) : (
+                          <Button size="sm" variant="outline" className="h-7 text-xs text-amber-700"
+                            onClick={() => revokeMutation.mutate(device.id)}>
+                            Revoke
+                          </Button>
+                        )}
                         <Button size="sm" variant="outline"
                           className="h-7 text-xs text-destructive border-destructive/30 hover:bg-destructive/10"
                           onClick={() => { setDeleteTarget(device); setDeleteOpen(true); }}>
@@ -295,6 +342,8 @@ function AdminDevicesPage() {
         device={detailDevice ? { ...toDevice(detailDevice), connectionHistory: [] } : null}
         onEdit={() => { setDetailOpen(false); if (detailDevice) { setEditTarget(detailDevice); setFormOpen(true); } }}
         onRotateKey={() => { if (detailDevice) { setRotateTarget(detailDevice); setRotateOpen(true); } }}
+        onRevoke={() => { if (detailDevice) revokeMutation.mutate(detailDevice.id); }}
+        onReactivate={() => { if (detailDevice) reactivateMutation.mutate(detailDevice); }}
         onDelete={() => { if (detailDevice) { setDeleteTarget(detailDevice); setDeleteOpen(true); } }}
         onOpenKiosk={() => {
           if (detailDevice?.roomId) window.open(`/display/${detailDevice.roomId}`, "_blank");
@@ -303,10 +352,16 @@ function AdminDevicesPage() {
 
       <DeviceKeyDisplayModal
         open={keyModalOpen}
-        onOpenChange={setKeyModalOpen}
+        onOpenChange={(open) => {
+          setKeyModalOpen(open);
+          if (!open) setNewKey("");
+        }}
         deviceKey={newKey}
         deviceName={newKeyDeviceName}
-        onConfirm={() => setKeyModalOpen(false)}
+        onConfirm={() => {
+          setNewKey("");
+          setKeyModalOpen(false);
+        }}
       />
 
       <RotateKeyConfirmModal
@@ -323,7 +378,10 @@ function AdminDevicesPage() {
         onConfirm={() => deleteTarget && deleteMutation.mutate(deleteTarget.id)}
       />
 
-      <Dialog open={pairOpen} onOpenChange={setPairOpen}>
+      <Dialog open={pairOpen} onOpenChange={(open) => {
+        setPairOpen(open);
+        if (!open) setPairCode("");
+      }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">

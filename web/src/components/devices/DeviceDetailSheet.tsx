@@ -1,13 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { Copy, Eye, EyeOff, ExternalLink, Edit, Trash2, RefreshCw } from "lucide-react";
+import { ExternalLink, Edit, Trash2, RefreshCw, ShieldOff, ShieldCheck } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Device, DeviceDetail } from "@/types/device";
-import { getDeviceStatus, formatRelativeTime, maskDeviceKey, getStatusBadgeVariant } from "@/lib/device-utils";
+import { getDeviceStatus, formatRelativeTime, getStatusBadgeVariant } from "@/lib/device-utils";
 import { cn } from "@/lib/utils";
 
 interface DeviceDetailSheetProps {
@@ -16,6 +15,8 @@ interface DeviceDetailSheetProps {
   device: DeviceDetail | null;
   onEdit: () => void;
   onRotateKey: () => void;
+  onRevoke: () => void;
+  onReactivate: () => void;
   onDelete: () => void;
   onOpenKiosk: () => void;
   isLoading?: boolean;
@@ -27,18 +28,16 @@ export function DeviceDetailSheet({
   device,
   onEdit,
   onRotateKey,
+  onRevoke,
+  onReactivate,
   onDelete,
   onOpenKiosk,
   isLoading = false,
 }: DeviceDetailSheetProps) {
-  const [showKey, setShowKey] = useState(false);
-
   if (!device) return null;
 
   const status = getDeviceStatus(device);
   const statusVariant = getStatusBadgeVariant(status);
-  const maskedKey = maskDeviceKey(device.deviceKey);
-
   const connectionHistory = device.connectionHistory || [
     { timestamp: new Date(Date.now() - 30 * 60 * 1000).toISOString(), status: "connected" },
     { timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), status: "disconnected" },
@@ -101,34 +100,18 @@ export function DeviceDetailSheet({
           <Separator />
 
           <section>
-            <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center justify-between">
-              Device Key
-              <Button variant="ghost" size="icon" onClick={() => setShowKey(!showKey)} aria-label={showKey ? "ซ่อน key" : "แสดง key"}>
-                {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-              </Button>
-            </h3>
-            <div className="space-y-2">
-              <div className="relative">
-                <code className={cn(
-                  "font-mono text-sm bg-gray-100 border rounded-md px-3 py-2 block break-all",
-                  !showKey && "text-transparent bg-clip-text bg-gradient-to-r from-gray-400 to-gray-500"
-                )}>
-                  {showKey ? device.deviceKey : "••••••••••••••••••••••••••••••••"}
-                </code>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="absolute right-2 top-2"
-                  onClick={() => navigator.clipboard.writeText(device.deviceKey)}
-                  aria-label="Copy device key"
-                >
-                  <Copy className="h-4 w-4" />
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {showKey ? "กดไอคอนลูกตาเพื่อซ่อน key" : "กดไอคอนลูกตาเพื่อแสดง key"}
-              </p>
-            </div>
+            <h3 className="text-sm font-medium text-muted-foreground mb-3">Device Credential</h3>
+            <dl className="grid grid-cols-[120px_1fr] gap-2 text-sm">
+              <dt className="text-muted-foreground">Key prefix</dt>
+              <dd><code>{device.deviceKeyPrefix}…</code></dd>
+              <dt className="text-muted-foreground">Version</dt>
+              <dd>{device.credentialVersion}</dd>
+              <dt className="text-muted-foreground">Rotated</dt>
+              <dd>{new Date(device.credentialRotatedAt).toLocaleString("th-TH")}</dd>
+              <dt className="text-muted-foreground">Credential</dt>
+              <dd>{device.revokedAt ? "Revoked" : "Active"}</dd>
+            </dl>
+            <p className="text-xs text-muted-foreground mt-2">Plaintext keys are only shown when issued or rotated.</p>
           </section>
 
           <Separator />
@@ -185,11 +168,22 @@ export function DeviceDetailSheet({
                 variant="outline"
                 className="w-full justify-start gap-2"
                 onClick={onRotateKey}
-                disabled={isLoading}
+                disabled={isLoading || !!device.revokedAt}
               >
                 <RefreshCw className="h-4 w-4" />
                 Rotate Key
               </Button>
+              {device.revokedAt ? (
+                <Button variant="outline" className="w-full justify-start gap-2" onClick={onReactivate} disabled={isLoading}>
+                  <ShieldCheck className="h-4 w-4" />
+                  Reactivate with New Key
+                </Button>
+              ) : (
+                <Button variant="outline" className="w-full justify-start gap-2 text-amber-700" onClick={onRevoke} disabled={isLoading}>
+                  <ShieldOff className="h-4 w-4" />
+                  Revoke Credential
+                </Button>
+              )}
               <Button
                 variant="destructive"
                 className="w-full justify-start gap-2"
