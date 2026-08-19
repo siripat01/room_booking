@@ -1,6 +1,6 @@
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+let resend: Resend | undefined;
 
 type BookingEmailData = {
   userEmail: string;
@@ -24,7 +24,8 @@ function canSend(): boolean {
   return true;
 }
 
-async function send(payload: Parameters<typeof resend.emails.send>[0]) {
+async function send(payload: Parameters<Resend["emails"]["send"]>[0]) {
+  resend ??= new Resend(process.env.RESEND_API_KEY!);
   const { data, error } = await resend.emails.send(payload);
   if (error) {
     console.error("[email] Send failed:", error);

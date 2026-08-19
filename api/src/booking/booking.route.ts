@@ -1,12 +1,27 @@
 import Elysia, { t } from "elysia";
 import { betterAuth } from "../middleware/auth.middleware";
 import { BookingService } from "./booking.service";
+import { isBookingPolicyError } from "./booking.errors";
 import prisma from "../../libs/db";
 
 const bookingService = new BookingService(prisma);
 
+function requestCorrelationId(request: Request) {
+    return request.headers.get("x-request-id") ?? crypto.randomUUID();
+}
+
 const bookingRoutes = new Elysia({ prefix: "/bookings" })
     .use(betterAuth)
+    .onError(({ error, status }) => {
+        if (!isBookingPolicyError(error)) return;
+        const conflict = [
+            "ROOM_OVERLAP",
+            "USER_OVERLAP",
+            "CONCURRENT_BOOKING_CONFLICT",
+            "INVALID_STATE_TRANSITION",
+        ].includes(error.code);
+        return status(conflict ? 409 : 400, { error: error.message, code: error.code });
+    })
     .get(
         "/",
         async ({ user, query }) => {
@@ -59,6 +74,7 @@ const bookingRoutes = new Elysia({ prefix: "/bookings" })
                     endTime: new Date(body.endTime),
                     attendees: body.attendees,
                     purpose: body.purpose,
+                    userRole: user.role ?? "userRole",
                 });
             } catch (e: any) {
                 if (e.message === "Waitlist requires PRO plan") return status(403, { error: e.message });
@@ -91,9 +107,7 @@ const bookingRoutes = new Elysia({ prefix: "/bookings" })
     )
     .post(
         "/",
-        async ({ user, body, status: setStatus }) => {
-            const room = await prisma.room.findUniqueOrThrow({ where: { id: body.roomId }, select: { autoApprove: true } });
-            const autoConfirm = room.autoApprove || ["teacherRole", "adminRole"].includes(user.role ?? "");
+        async ({ user, body, status: setStatus, request }) => {
             try {
                 return await bookingService.createBooking({
                     userId: user.id,
@@ -102,15 +116,18 @@ const bookingRoutes = new Elysia({ prefix: "/bookings" })
                     endTime: new Date(body.endTime),
                     attendees: body.attendees,
                     purpose: body.purpose,
-                    autoConfirm,
-                    approvedBy: autoConfirm ? user.id : undefined,
                     userRole: user.role ?? "userRole",
+                    actor: {
+                        type: user.role === "adminRole" ? "ADMIN" : "USER",
+                        id: user.id,
+                        correlationId: requestCorrelationId(request),
+                    },
                 });
             } catch (e: any) {
-                if (e.message?.includes("overlapping")) {
-                    return setStatus(409, { error: e.message, alternatives: e.alternatives ?? [] });
+                if (["ROOM_OVERLAP", "USER_OVERLAP", "CONCURRENT_BOOKING_CONFLICT"].includes(e.code)) {
+                    return setStatus(409, { error: e.message, code: e.code, alternatives: e.alternatives ?? [] });
                 }
-                return setStatus(400, { error: e.message ?? "Booking failed" });
+                return setStatus(400, { error: e.message ?? "Booking failed", code: e.code });
             }
         },
         {
@@ -126,12 +143,13 @@ const bookingRoutes = new Elysia({ prefix: "/bookings" })
     )
     .patch(
         "/:id/cancel",
-        async ({ user, params: { id }, body }) => {
+        async ({ user, params: { id }, body, request }) => {
             return bookingService.cancelBooking(
                 id,
                 user.id,
                 user.role ?? "userRole",
                 body?.cancelReason,
+                requestCorrelationId(request),
             );
         },
         {
@@ -148,8 +166,8 @@ const bookingRoutes = new Elysia({ prefix: "/bookings" })
     )
     .post(
         "/:id/checkin",
-        async ({ user, params: { id }, body }) => {
-            return bookingService.checkIn(id, body.qrToken, user.id, user.role ?? "userRole");
+        async ({ user, params: { id }, body, request }) => {
+            return bookingService.checkIn(id, body.qrToken, user.id, user.role ?? "userRole", requestCorrelationId(request));
         },
         {
             auth: true,
@@ -158,25 +176,29 @@ const bookingRoutes = new Elysia({ prefix: "/bookings" })
     )
     .post(
         "/:id/checkout",
-        async ({ user, params: { id }, status }) => {
+        async ({ user, params: { id }, status, request }) => {
             if (!["adminRole", "teacherRole"].includes(user.role ?? "")) return status(403);
-            return bookingService.checkOut(id);
+            return bookingService.checkOut(id, {
+                type: user.role === "adminRole" ? "ADMIN" : "USER",
+                id: user.id,
+                correlationId: requestCorrelationId(request),
+            });
         },
         { auth: true },
     )
     .patch(
         "/:id/approve",
-        async ({ user, params: { id }, status }) => {
+        async ({ user, params: { id }, status, request }) => {
             if (user.role !== "adminRole") return status(403);
-            return bookingService.approveBooking(id, user.id);
+            return bookingService.approveBooking(id, user.id, requestCorrelationId(request));
         },
         { auth: true },
     )
     .patch(
         "/:id/reject",
-        async ({ user, params: { id }, body, status }) => {
+        async ({ user, params: { id }, body, status, request }) => {
             if (user.role !== "adminRole") return status(403);
-            return bookingService.rejectBooking(id, user.id, body.reason);
+            return bookingService.rejectBooking(id, user.id, body.reason, requestCorrelationId(request));
         },
         {
             auth: true,
@@ -185,9 +207,9 @@ const bookingRoutes = new Elysia({ prefix: "/bookings" })
     )
     .delete(
         "/:id",
-        async ({ user, params: { id }, status }) => {
+        async ({ user, params: { id }, status, request }) => {
             if (user.role !== "adminRole") return status(403);
-            return bookingService.forceDeleteBooking(id);
+            return bookingService.forceDeleteBooking(id, user.id, requestCorrelationId(request));
         },
         { auth: true },
     );

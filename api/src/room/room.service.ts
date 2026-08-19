@@ -1,5 +1,11 @@
 import type { PrismaClient } from "../../generated/prisma/client";
 import type { CreateRoomInput } from "../../type/room";
+import {
+    addCalendarDays,
+    bangkokDayBounds,
+    bangkokLocalDateTimeToInstant,
+    getBangkokDateTime,
+} from "../lib/bangkok-time";
 
 export class RoomService {
     constructor(
@@ -21,8 +27,8 @@ export class RoomService {
 
         // filter out rooms with conflicting bookings for the requested time window
         if (params?.date && params?.startTime && params?.endTime) {
-            const start = new Date(`${params.date}T${params.startTime}:00`);
-            const end = new Date(`${params.date}T${params.endTime}:00`);
+            const start = bangkokLocalDateTimeToInstant(params.date, params.startTime);
+            const end = bangkokLocalDateTimeToInstant(params.date, params.endTime);
 
             const conflicted = await this.prisma.booking.findMany({
                 where: {
@@ -86,13 +92,14 @@ export class RoomService {
 
     async getRoomSchedule(id: string) {
         try {
-            const today = new Date().toISOString().split('T')[0];
+            const today = getBangkokDateTime(new Date()).date;
+            const bounds = bangkokDayBounds(today);
             return await this.prisma.booking.findMany({
                 where: {
                     roomId: id,
                     startTime: {
-                        gte: new Date(today),
-                        lt: new Date(new Date(today).setDate(new Date(today).getDate() + 1)),
+                        gte: bounds.start,
+                        lt: bounds.end,
                     },
                 },
                 select: {
@@ -119,14 +126,11 @@ export class RoomService {
         });
         if (!room) throw new Error("Room not found");
 
-        const dayOfWeek = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"][
-            new Date(date).getDay()
-        ] as "SUNDAY" | "MONDAY" | "TUESDAY" | "WEDNESDAY" | "THURSDAY" | "FRIDAY" | "SATURDAY";
+        const dayOfWeek = getBangkokDateTime(bangkokLocalDateTimeToInstant(date, "12:00")).dayOfWeek;
 
         const timeSlot = room.timeSlots.find((s) => s.dayOfWeek === dayOfWeek && s.isActive);
 
-        const dayStart = new Date(`${date}T00:00:00.000Z`);
-        const dayEnd = new Date(`${date}T23:59:59.999Z`);
+        const { start: dayStart, end: dayEnd } = bangkokDayBounds(date);
 
         const bookings = await this.prisma.booking.findMany({
             where: {
@@ -154,13 +158,11 @@ export class RoomService {
     }
 
     async getRoomCalendar(id: string, date: string) {
-        const d = new Date(date);
-        const day = d.getDay();
-        const monday = new Date(d);
-        monday.setDate(d.getDate() - ((day + 6) % 7));
-        monday.setHours(0, 0, 0, 0);
-        const sunday = new Date(monday);
-        sunday.setDate(monday.getDate() + 7);
+        const day = bangkokLocalDateTimeToInstant(date, "12:00").getUTCDay();
+        const mondayDate = addCalendarDays(date, -((day + 6) % 7));
+        const sundayDate = addCalendarDays(mondayDate, 7);
+        const monday = bangkokDayBounds(mondayDate).start;
+        const sunday = bangkokDayBounds(sundayDate).start;
 
         const bookings = await this.prisma.booking.findMany({
             where: {

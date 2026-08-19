@@ -2,7 +2,9 @@
   "name": "api",
   "version": "1.0.50",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "bun test",
+    "test:unit": "bun test src/booking/booking-policy.service.test.ts",
+    "test:integration": "bun test test/booking-concurrency.integration.test.ts",
     "dev": "bun run --watch src/index.ts",
     "migrate": "bun migrate.ts"
   },
