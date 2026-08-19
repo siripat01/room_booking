@@ -125,16 +125,44 @@ CHECKED_IN -> COMPLETED
 
 `COMPLETED`, `CANCELLED`, `REJECTED`, and `EXPIRED` are terminal. Each creation and transition writes a `BookingEvent` in the same database transaction with actor, previous/new status, safe metadata, timestamp, and request correlation ID.
 
+## QR, Kiosk, and Device Security (Phase 2)
+
+RoomFlow uses one `CheckInPolicyService` for the booking API, kiosk device API,
+kiosk camera window, and booking-expiration job:
+
+```text
+startTime - 10 minutes <= check-in <= startTime + 12 minutes
+```
+
+- QR tokens use 32 random bytes, expire after at most two minutes, are single-use,
+  and are stored only as SHA-256 hashes.
+- QR generation is available only inside the check-in window. Check-in requires
+  an active, non-revoked device assigned to the booking room; authenticated users
+  cannot bypass the kiosk requirement.
+- Device credentials use 32 random bytes and are stored only as SHA-256 hashes.
+  Plaintext is returned once when created, paired, rotated, or reactivated.
+- Rotation invalidates the previous credential immediately. Revocation disables
+  the device and invalidates outstanding pairing codes. Reactivation always
+  issues a new credential.
+- Pairing codes are HMAC-hashed, expire after ten minutes, are atomically
+  single-use, and rotate the device credential when consumed.
+- Pairing, QR scans, walk-ins, and heartbeats use PostgreSQL-backed rate limits,
+  so limits remain effective across multiple API instances.
+- Device online status is derived server-side from heartbeat freshness. Kiosks
+  heartbeat every 30 seconds and are considered online for 90 seconds.
+- Walk-ins use a dedicated system principal per kiosk, require requester metadata,
+  enter `CHECKED_IN` state atomically, and record correlated `BookingEvent` entries.
+
 ## Migration Process
 
 ```bash
 cd api
 bun install --frozen-lockfile
 bun run prisma generate
-bun run prisma migrate deploy
+bun run migrate
 ```
 
-The Phase 1 migration performs a preflight check and stops if existing active bookings overlap or contain invalid ranges. It never deletes or rewrites conflicting bookings automatically; resolve reported production data explicitly before retrying.
+The Phase 1 migration performs a preflight check and stops if existing active bookings overlap or contain invalid ranges. It never deletes or rewrites conflicting bookings automatically; resolve reported production data explicitly before retrying. The Phase 2 migration hashes existing QR and device credentials, scrubs legacy plaintext columns while retaining non-secret compatibility placeholders for one rolling deployment, and backfills one walk-in system principal per device. A later cleanup migration can drop the constrained legacy columns after all Phase 2 machines are deployed.
 
 ## Tests
 
@@ -147,11 +175,10 @@ TEST_DATABASE_URL=postgresql://user:password@localhost:5432/room_booking_test \
   bun run test:integration
 ```
 
-Automated tests never require notification credentials. The concurrency integration test sends two simultaneous requests and verifies that exactly one active booking is committed.
+Automated tests never require notification credentials. Integration tests cover concurrent booking exclusion, QR room binding/expiry/grace/replay, device credential rotation and revocation, pairing single-use behavior, audited walk-ins, and concurrent database rate limiting.
 
 ## Known Limitations and Roadmap
 
-- QR/device hardening and the unified `-10/+12 minute` check-in window are Phase 2.
 - LINE Notify replacement and durable notification jobs are Phase 3.
 - Multi-instance-safe scheduling and the admin audit timeline are Phase 4.
 - Full API/frontend/E2E quality gates are Phase 5.

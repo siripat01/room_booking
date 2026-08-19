@@ -1,5 +1,4 @@
 import type { Prisma, PrismaClient } from "../../generated/prisma/client";
-import { randomBytes, timingSafeEqual } from "crypto";
 import {
   sendBookingApproved,
   sendBookingRejected,
@@ -12,6 +11,12 @@ import { isExclusionConstraintError, withSerializableRetry } from "../lib/transa
 import { bangkokDayBounds, getBangkokDateTime } from "../lib/bangkok-time";
 import { BookingPolicyError } from "./booking.errors";
 import { BookingPolicyService } from "./booking-policy.service";
+import {
+  CHECK_IN_LATE_MINUTES,
+  CheckInPolicyService,
+} from "../check-in/check-in-policy.service";
+import { CheckInPolicyError } from "../check-in/check-in.errors";
+import { generateOpaqueToken, hashOpaqueToken } from "../lib/opaque-token";
 
 type BookingStatus = "PENDING" | "CONFIRMED" | "CHECKED_IN" | "COMPLETED" | "CANCELLED" | "REJECTED" | "EXPIRED";
 type BookingActorType = "USER" | "ADMIN" | "DEVICE" | "SYSTEM";
@@ -56,10 +61,16 @@ const EVENT_FOR_STATUS: Record<Exclude<BookingStatus, "PENDING">, BookingEventTy
   EXPIRED: "EXPIRED",
 };
 
+function withoutQrTokenHash<T extends { qrTokenHash: string | null }>(booking: T) {
+  const { qrTokenHash: _qrTokenHash, ...safeBooking } = booking;
+  return safeBooking;
+}
+
 export class BookingService {
   constructor(
     private readonly prisma: PrismaClient,
     private readonly policy = new BookingPolicyService(),
+    private readonly checkInPolicy: CheckInPolicyService = new CheckInPolicyService(),
   ) {}
 
   async createBooking(data: CreateBookingData) {
@@ -101,7 +112,7 @@ export class BookingService {
       });
 
       await this.safelyNotify(() => this.sendConfirmationAndImmediateReminders(booking));
-      return booking;
+      return withoutQrTokenHash(booking);
     } catch (error) {
       if (isExclusionConstraintError(error)) {
         throw new BookingPolicyError(
@@ -152,7 +163,16 @@ export class BookingService {
       }),
       this.prisma.booking.count({ where }),
     ]);
-    return { bookings, total, page, limit, totalPages: Math.ceil(total / limit) };
+    return {
+      bookings: bookings.map((booking) => ({
+        ...withoutQrTokenHash(booking),
+        checkInWindow: this.checkInPolicy.getWindow(booking.startTime),
+      })),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
   }
 
   async getBookingById(id: string, userId: string, role: string) {
@@ -166,7 +186,7 @@ export class BookingService {
     });
     if (!booking) throw new Error("Booking not found");
     if (role !== "adminRole" && booking.userId !== userId) throw new Error("Unauthorized");
-    return booking;
+    return { ...withoutQrTokenHash(booking), checkInWindow: this.checkInPolicy.getWindow(booking.startTime) };
   }
 
   async cancelBooking(id: string, userId: string, role: string, cancelReason?: string, correlationId?: string) {
@@ -229,58 +249,184 @@ export class BookingService {
     return { success: true };
   }
 
-  async generateQr(id: string, userId: string, role: string) {
-    const booking = await this.prisma.booking.findUnique({ where: { id } });
+  async generateQr(id: string, userId: string, role: string, now = new Date()) {
+    const booking = await this.prisma.booking.findUnique({
+      where: { id },
+      include: { room: { select: { name: true } } },
+    });
     if (!booking) throw new Error("Booking not found");
     if (role !== "adminRole" && booking.userId !== userId) throw new Error("Unauthorized");
-    if (booking.status !== "CONFIRMED") throw new Error("Only confirmed bookings can generate a QR code");
-    if (booking.endTime < new Date()) throw new Error("Booking time has already passed");
+    this.checkInPolicy.assertCanGenerateQr(booking, now);
 
-    const qrToken = randomBytes(32).toString("hex");
-    const qrExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
-    await this.prisma.booking.update({ where: { id }, data: { qrToken, qrExpiresAt } });
-    return { qrToken, expiresAt: qrExpiresAt };
-  }
-
-  async checkIn(id: string, qrToken: string, userId: string, role: string, correlationId?: string) {
-    const booking = await this.prisma.booking.findUnique({ where: { id } });
-    if (!booking) throw new Error("Booking not found");
-    if (role !== "adminRole" && booking.userId !== userId) throw new Error("Unauthorized");
-    if (booking.status !== "CONFIRMED") throw new Error("Booking is not confirmed");
-    if (!booking.qrToken || !booking.qrExpiresAt || booking.qrExpiresAt < new Date()) throw new Error("QR token has expired");
-    const stored = Buffer.from(booking.qrToken);
-    const provided = Buffer.from(qrToken.padEnd(booking.qrToken.length, "\0").slice(0, booking.qrToken.length));
-    if (stored.length !== provided.length || !timingSafeEqual(stored, provided)) throw new Error("Invalid QR token");
-
-    return this.transitionBooking(
-      id,
-      "CHECKED_IN",
-      this.userActor(userId, role, correlationId),
-      { checkedInAt: new Date(), qrToken: null, qrExpiresAt: null },
-    );
+    const qrToken = generateOpaqueToken("qr_");
+    const qrTokenHash = hashOpaqueToken(qrToken);
+    const qrExpiresAt = this.checkInPolicy.qrExpiry(booking.startTime, now);
+    const updated = await this.prisma.booking.updateMany({
+      where: { id, status: "CONFIRMED" },
+      data: { qrTokenHash, qrExpiresAt },
+    });
+    if (updated.count !== 1) {
+      throw new CheckInPolicyError("BOOKING_NOT_CONFIRMED", "Booking status changed before QR generation");
+    }
+    return { qrToken, expiresAt: qrExpiresAt, roomName: booking.room.name };
   }
 
   async checkInByDevice(
-    id: string,
     qrToken: string,
-    device: { id: string; roomId: string },
+    device: { id: string; roomId: string | null; isActive: boolean; revokedAt: Date | null; credentialVersion: number },
     correlationId?: string,
+    now = new Date(),
   ) {
-    const booking = await this.prisma.booking.findUnique({ where: { id } });
-    if (!booking) throw new Error("Booking not found");
-    if (booking.roomId !== device.roomId) throw new Error("QR code is for a different room");
-    if (booking.status !== "CONFIRMED") throw new Error("Booking is not confirmed");
-    if (!booking.qrToken || !booking.qrExpiresAt || booking.qrExpiresAt < new Date()) throw new Error("QR token has expired");
-    const stored = Buffer.from(booking.qrToken);
-    const provided = Buffer.from(qrToken.padEnd(booking.qrToken.length, "\0").slice(0, booking.qrToken.length));
-    if (stored.length !== provided.length || !timingSafeEqual(stored, provided)) throw new Error("Invalid QR token");
+    const qrTokenHash = hashOpaqueToken(qrToken);
+    return withSerializableRetry(this.prisma, async (tx) => {
+      const currentDevice = await tx.device.findUnique({
+        where: { id: device.id },
+        select: { id: true, roomId: true, isActive: true, revokedAt: true, credentialVersion: true },
+      });
+      if (!currentDevice || currentDevice.credentialVersion !== device.credentialVersion) {
+        throw new CheckInPolicyError("DEVICE_CREDENTIAL_STALE", "Device credential is no longer current");
+      }
+      const booking = await tx.booking.findUnique({ where: { qrTokenHash } });
+      if (!booking) throw new CheckInPolicyError("INVALID_QR", "Invalid or already-used QR token");
 
-    return this.transitionBooking(
-      id,
-      "CHECKED_IN",
-      { type: "DEVICE", id: device.id, correlationId },
-      { checkedInAt: new Date(), qrToken: null, qrExpiresAt: null },
-    );
+      this.checkInPolicy.assertCanCheckIn(booking, currentDevice, now);
+
+      const updated = await tx.booking.updateMany({
+        where: { id: booking.id, status: "CONFIRMED", qrTokenHash },
+        data: {
+          status: "CHECKED_IN",
+          checkedInAt: now,
+          qrTokenHash: null,
+          qrExpiresAt: null,
+        },
+      });
+      if (updated.count !== 1) {
+        throw new CheckInPolicyError("INVALID_QR", "Invalid or already-used QR token");
+      }
+
+      await this.recordEvent(tx, {
+        bookingId: booking.id,
+        roomId: booking.roomId,
+        actor: { type: "DEVICE", id: device.id, correlationId },
+        eventType: "CHECKED_IN",
+        previousStatus: "CONFIRMED",
+        newStatus: "CHECKED_IN",
+      });
+      const checkedIn = await tx.booking.findUniqueOrThrow({
+        where: { id: booking.id },
+        include: {
+          room: { select: { name: true, floor: true } },
+          user: { select: { name: true, email: true } },
+        },
+      });
+      return withoutQrTokenHash(checkedIn);
+    });
+  }
+
+  async createWalkIn(data: {
+    device: {
+      id: string;
+      roomId: string;
+      walkInPrincipalId: string;
+      isActive: boolean;
+      revokedAt: Date | null;
+      credentialVersion: number;
+    };
+    durationMinutes: number;
+    attendees: number;
+    purpose?: string;
+    requesterName: string;
+    requesterReference?: string;
+    correlationId?: string;
+    now?: Date;
+  }) {
+    const now = data.now ?? new Date();
+    const startTime = new Date(now.getTime() + 1_000);
+    const endTime = new Date(startTime.getTime() + data.durationMinutes * 60_000);
+    return withSerializableRetry(this.prisma, async (tx) => {
+      const currentDevice = await tx.device.findUnique({
+        where: { id: data.device.id },
+        select: {
+          id: true,
+          roomId: true,
+          walkInPrincipalId: true,
+          isActive: true,
+          revokedAt: true,
+          credentialVersion: true,
+        },
+      });
+      if (!currentDevice || currentDevice.credentialVersion !== data.device.credentialVersion) {
+        throw new CheckInPolicyError("DEVICE_CREDENTIAL_STALE", "Device credential is no longer current");
+      }
+      this.checkInPolicy.assertTrustedDevice(currentDevice, data.device.roomId);
+      if (!currentDevice.roomId) {
+        throw new CheckInPolicyError("DEVICE_NOT_ASSIGNED", "Device is not assigned to a room");
+      }
+      await this.policy.validateCreate(tx, {
+        userId: currentDevice.walkInPrincipalId,
+        roomId: currentDevice.roomId,
+        startTime,
+        endTime,
+        attendees: data.attendees,
+        userRole: "userRole",
+      });
+
+      const actor: BookingActor = {
+        type: "DEVICE",
+        id: data.device.id,
+        correlationId: data.correlationId,
+        metadata: {
+          source: "walk-in",
+          requesterName: data.requesterName,
+          requesterReference: data.requesterReference ?? null,
+        },
+      };
+      const booking = await tx.booking.create({
+        data: {
+          userId: currentDevice.walkInPrincipalId,
+          roomId: currentDevice.roomId,
+          startTime,
+          endTime,
+          attendees: data.attendees,
+          purpose: data.purpose ?? "Walk-in Booking",
+          status: "CONFIRMED",
+          approvedAt: now,
+          walkInRequesterName: data.requesterName,
+          walkInRequesterReference: data.requesterReference,
+        },
+      });
+      await this.recordEvent(tx, {
+        bookingId: booking.id,
+        roomId: booking.roomId,
+        actor,
+        eventType: "CREATED",
+        previousStatus: null,
+        newStatus: "CONFIRMED",
+        metadata: { autoConfirmed: true },
+      });
+
+      await tx.booking.update({
+        where: { id: booking.id },
+        data: { status: "CHECKED_IN", checkedInAt: now },
+      });
+      await this.recordEvent(tx, {
+        bookingId: booking.id,
+        roomId: booking.roomId,
+        actor,
+        eventType: "CHECKED_IN",
+        previousStatus: "CONFIRMED",
+        newStatus: "CHECKED_IN",
+      });
+
+      const checkedIn = await tx.booking.findUniqueOrThrow({
+        where: { id: booking.id },
+        include: {
+          room: { select: { name: true, floor: true } },
+          user: { select: { name: true } },
+        },
+      });
+      return withoutQrTokenHash(checkedIn);
+    });
   }
 
   async checkOut(id: string, actor: BookingActor = { type: "SYSTEM" }) {
@@ -289,7 +435,7 @@ export class BookingService {
 
   async expireDueBookings(now = new Date()) {
     const due = await this.prisma.booking.findMany({
-      where: { status: "CONFIRMED", startTime: { lt: new Date(now.getTime() - 12 * 60_000) } },
+      where: { status: "CONFIRMED", startTime: { lt: new Date(now.getTime() - CHECK_IN_LATE_MINUTES * 60_000) } },
       select: { id: true },
       take: 200,
     });
@@ -490,13 +636,14 @@ export class BookingService {
         newStatus,
         metadata,
       });
-      return tx.booking.findUniqueOrThrow({
+      const result = await tx.booking.findUniqueOrThrow({
         where: { id },
         include: {
           room: { select: { name: true, floor: true } },
           user: { select: { name: true, email: true, lineNotifyToken: true, plan: true } },
         },
       });
+      return withoutQrTokenHash(result);
     });
   }
 

@@ -1,20 +1,8 @@
 import { Device, DeviceStatus } from "@/types/device";
 
 export function getDeviceStatus(device: Device): DeviceStatus {
-  if (!device.lastSeenAt) {
-    return "unknown";
-  }
-
-  const now = new Date();
-  const lastSeen = new Date(device.lastSeenAt);
-  const diffMs = now.getTime() - lastSeen.getTime();
-  const diffMinutes = diffMs / (1000 * 60);
-
-  if (diffMinutes < 1) {
-    return "online";
-  }
-
-  return "offline";
+  if (!device.isActive || device.revokedAt) return "offline";
+  return device.onlineStatus;
 }
 
 export function formatRelativeTime(dateString: string | null): string {
@@ -52,13 +40,6 @@ export function formatRelativeTime(dateString: string | null): string {
     hour: "2-digit",
     minute: "2-digit",
   });
-}
-
-export function maskDeviceKey(key: string): string {
-  if (key.length <= 8) {
-    return key;
-  }
-  return `${key.substring(0, 8)}...`;
 }
 
 export function getStatusLabel(status: DeviceStatus): string {

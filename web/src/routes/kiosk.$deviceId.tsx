@@ -16,12 +16,15 @@ type Booking = {
   purpose?: string | null;
   user?: { name: string } | null;
   status: string;
+  walkInRequesterName?: string | null;
 };
 
 type DeviceStatus = {
   device: { id: string; name: string; room?: { name: string; floor: string } | null };
   currentBooking: (Booking & { user?: { name: string; email: string } | null }) | null;
   nextBooking: (Booking & { user?: { name: string; email: string } | null }) | null;
+  checkInWindow: { bookingId: string; opensAt: string; closesAt: string } | null;
+  nextCheckInWindow: { opensAt: string; closesAt: string } | null;
 };
 
 type DeviceSchedule = {
@@ -34,12 +37,14 @@ type ScanResult = { ok: boolean; message: string };
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function fmt(iso: string) {
-  return new Date(iso).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", hour12: false });
+  return new Date(iso).toLocaleTimeString("th-TH", {
+    hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Bangkok",
+  });
 }
 
 function fmtDate() {
   return new Date().toLocaleDateString("th-TH", {
-    weekday: "long", day: "numeric", month: "long", year: "numeric",
+    weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Bangkok",
   });
 }
 
@@ -160,7 +165,13 @@ function KioskPage() {
   const [loading, setLoading] = useState(true);
   const [scanPaused, setScanPaused] = useState(false);
   const [walkinOpen, setWalkinOpen] = useState(false);
-  const [walkinForm, setWalkinForm] = useState({ purpose: "", attendees: "1", duration: 60 });
+  const [walkinForm, setWalkinForm] = useState({
+    requesterName: "",
+    requesterReference: "",
+    purpose: "",
+    attendees: "1",
+    duration: 60,
+  });
   const [walkinPending, setWalkinPending] = useState(false);
   const cooldownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -215,9 +226,10 @@ function KioskPage() {
   // Heartbeat
   useEffect(() => {
     if (!deviceKey) return;
+    void kioskFetch(`/devices/${deviceId}/heartbeat`, deviceKey, { method: "PATCH" });
     const t = setInterval(() => {
-      kioskFetch(`/devices/${deviceId}/heartbeat`, deviceKey, { method: "PATCH" });
-    }, 60_000);
+      void kioskFetch(`/devices/${deviceId}/heartbeat`, deviceKey, { method: "PATCH" });
+    }, 30_000);
     return () => clearInterval(t);
   }, [deviceId, deviceKey]);
 
@@ -258,22 +270,28 @@ function KioskPage() {
   const handleWalkin = useCallback(async () => {
     if (!deviceKey) return;
     setWalkinPending(true);
-    const now = new Date();
-    const startTime = now.toISOString();
-    const endTime = new Date(now.getTime() + walkinForm.duration * 60_000).toISOString();
     try {
       const res = await kioskFetch(`/devices/${deviceId}/walkin`, deviceKey, {
         method: "POST",
-        body: JSON.stringify({ startTime, endTime, attendees: parseInt(walkinForm.attendees) || 1, purpose: walkinForm.purpose || "Walk-in Booking" }),
+        body: JSON.stringify({
+          durationMinutes: walkinForm.duration,
+          attendees: parseInt(walkinForm.attendees) || 1,
+          purpose: walkinForm.purpose || "Walk-in Booking",
+          requesterName: walkinForm.requesterName.trim(),
+          requesterReference: walkinForm.requesterReference.trim() || undefined,
+        }),
       });
-      if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.status === "CHECKED_IN") {
         setWalkinOpen(false);
-        setWalkinForm({ purpose: "", attendees: "1", duration: 60 });
-        showToast({ ok: true, message: "จองสำเร็จ! ห้องถูกจองแล้ว" });
+        setWalkinForm({ requesterName: "", requesterReference: "", purpose: "", attendees: "1", duration: 60 });
+        showToast({ ok: true, message: "จองและเช็คอินสำเร็จ ห้องกำลังใช้งาน" });
         fetchData();
       } else {
-        const d = await res.json();
-        showToast({ ok: false, message: d?.error ?? "จองไม่สำเร็จ" });
+        const message = data.status === "PENDING"
+          ? "ส่งคำขอแล้ว แต่ยังรอผู้ดูแลอนุมัติ"
+          : data?.error ?? "จองไม่สำเร็จ";
+        showToast({ ok: false, message });
       }
     } catch {
       showToast({ ok: false, message: "เกิดข้อผิดพลาด กรุณาลองใหม่" });
@@ -290,13 +308,13 @@ function KioskPage() {
   const roomName = status?.device?.room?.name ?? "No Room Assigned";
   const floor = status?.device?.room?.floor;
 
-  // Camera is active only during check-in window: [startTime - 10min, startTime]
+  // The backend owns the shared [-10, +12] minute check-in window.
   const checkInWindow = (() => {
-    const next = status?.nextBooking;
-    if (!next) return null;
-    const start = new Date(next.startTime);
-    const opens = new Date(start.getTime() - 10 * 60 * 1000);
-    if (now >= opens && now < start) return { opens, closes: start };
+    const window = status?.checkInWindow;
+    if (!window) return null;
+    const opens = new Date(window.opensAt);
+    const closes = new Date(window.closesAt);
+    if (now >= opens && now <= closes) return { opens, closes };
     return null;
   })();
   const cameraActive = !!checkInWindow;
@@ -343,7 +361,7 @@ function KioskPage() {
         </div>
         <div className="text-right">
           <p className="text-3xl font-mono font-bold tabular-nums">
-            {now.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })}
+            {now.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false, timeZone: "Asia/Bangkok" })}
           </p>
           <p className="text-sm text-gray-400">{fmtDate()}</p>
         </div>
@@ -374,7 +392,7 @@ function KioskPage() {
                   <p className="text-4xl font-bold leading-tight">{status.currentBooking.purpose ?? "การประชุม"}</p>
                   <p className="text-gray-400 text-lg">{fmt(status.currentBooking.startTime)} – {fmt(status.currentBooking.endTime)}</p>
                   {status.currentBooking.user?.name && (
-                    <p className="text-gray-500 text-sm">โดย {status.currentBooking.user.name}</p>
+                    <p className="text-gray-500 text-sm">โดย {status.currentBooking.walkInRequesterName ?? status.currentBooking.user.name}</p>
                   )}
                 </div>
               ) : (
@@ -442,8 +460,8 @@ function KioskPage() {
                         <p className={`font-medium truncate ${isCurrent ? "text-red-300" : "text-white"}`}>
                           {b.purpose ?? "การประชุม"}
                         </p>
-                        {b.user?.name && (
-                          <p className="text-xs text-gray-500 mt-0.5 truncate">{b.user.name}</p>
+                        {(b.walkInRequesterName || b.user?.name) && (
+                          <p className="text-xs text-gray-500 mt-0.5 truncate">{b.walkInRequesterName ?? b.user?.name}</p>
                         )}
                       </div>
                       <p className="text-sm text-gray-400 shrink-0 tabular-nums">
@@ -469,6 +487,28 @@ function KioskPage() {
               </button>
             </div>
             <div className="space-y-4">
+              <div>
+                <label className="text-xs text-gray-400 uppercase tracking-widest mb-1.5 block">ชื่อผู้ขอใช้ห้อง</label>
+                <input
+                  type="text"
+                  value={walkinForm.requesterName}
+                  onChange={(e) => setWalkinForm((f) => ({ ...f, requesterName: e.target.value }))}
+                  maxLength={120}
+                  placeholder="ชื่อ–นามสกุล"
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-white text-sm placeholder:text-gray-600 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-gray-400 uppercase tracking-widest mb-1.5 block">รหัสผู้ใช้ / ติดต่อ (ถ้ามี)</label>
+                <input
+                  type="text"
+                  value={walkinForm.requesterReference}
+                  onChange={(e) => setWalkinForm((f) => ({ ...f, requesterReference: e.target.value }))}
+                  maxLength={120}
+                  placeholder="เช่น รหัสนักศึกษา หรืออีเมล"
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-white text-sm placeholder:text-gray-600 focus:outline-none focus:border-blue-500"
+                />
+              </div>
               <div>
                 <label className="text-xs text-gray-400 uppercase tracking-widest mb-1.5 block">หัวข้อ / วัตถุประสงค์</label>
                 <input
@@ -510,7 +550,7 @@ function KioskPage() {
               </div>
               <button
                 onClick={handleWalkin}
-                disabled={walkinPending}
+                disabled={walkinPending || !walkinForm.requesterName.trim()}
                 className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl font-semibold transition-colors flex items-center justify-center gap-2"
               >
                 {walkinPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
@@ -533,7 +573,7 @@ function KioskPage() {
                 <>
                   <p className="text-gray-600 text-xs">กล้องจะเปิดเมื่อถึงเวลาเช็คอิน</p>
                   <p className="text-gray-500 text-sm font-medium tabular-nums">
-                    {fmt(new Date(new Date(status.nextBooking.startTime).getTime() - 10 * 60 * 1000).toISOString())} น.
+                    {status.nextCheckInWindow ? fmt(status.nextCheckInWindow.opensAt) : "–"} น.
                   </p>
                 </>
               ) : (

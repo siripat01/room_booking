@@ -195,8 +195,8 @@ export type Booking = {
   status: BookingStatus;
   cancelReason?: string | null;
   rejectedReason?: string | null;
-  qrToken?: string | null;
   qrExpiresAt?: string | null;
+  checkInWindow?: { opensAt: string; closesAt: string };
   checkedInAt?: string | null;
   checkedOutAt?: string | null;
   createdAt: string;
@@ -275,5 +275,10 @@ export type AdminDevice = {
   isActive: boolean;
   lastSeenAt?: string | null;
   createdAt: string;
+  deviceKeyPrefix: string;
+  credentialVersion: number;
+  credentialRotatedAt: string;
+  revokedAt?: string | null;
+  onlineStatus: "online" | "offline" | "unknown";
   room?: { id: string; name: string; floor: string } | null;
 };

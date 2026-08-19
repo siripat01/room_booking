@@ -2,7 +2,11 @@ export interface Device {
   id: string;
   roomId: string | null;
   name: string;
-  deviceKey: string;
+  deviceKeyPrefix: string;
+  credentialVersion: number;
+  credentialRotatedAt: string;
+  revokedAt: string | null;
+  onlineStatus: DeviceStatus;
   isActive: boolean;
   lastSeenAt: string | null;
   createdAt: string;

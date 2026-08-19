@@ -123,14 +123,17 @@ function BookingsPage() {
 
   const qrMutation = useMutation({
     mutationFn: async (booking: Booking) => {
-      const res = await fetch(`/api/bookings/${booking.id}/qr`);
-      if (!res.ok) throw new Error("Failed to generate QR code");
+      const res = await fetch(`/api/bookings/${booking.id}/qr`, { method: "POST", credentials: "include" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to generate QR code");
+      }
       return { ...(await res.json()), roomName: booking.room?.name ?? "Room" };
     },
     onSuccess: (data, booking) => {
       setQrState({ bookingId: booking.id, token: data.qrToken, expiresAt: data.expiresAt, roomName: data.roomName });
     },
-    onError: () => toast.error("Could not generate QR code."),
+    onError: (error) => toast.error(error instanceof Error ? error.message : "Could not generate QR code."),
   });
 
   const activeStatuses = isWaitlistTab ? null : TAB_FILTERS[activeTab].statuses;
@@ -419,12 +422,16 @@ function BookingCard({
   const end = new Date(booking.endTime);
   const isPast = new Date(booking.endTime) < new Date();
   const canCancel = ["PENDING", "CONFIRMED"].includes(booking.status) && !isPast;
-  const canShowQR = booking.status === "CONFIRMED" && !isPast;
+  const now = new Date();
+  const canShowQR = booking.status === "CONFIRMED"
+    && !!booking.checkInWindow
+    && now >= new Date(booking.checkInWindow.opensAt)
+    && now <= new Date(booking.checkInWindow.closesAt);
 
   const formatDate = (d: Date) =>
-    d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+    d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: "Asia/Bangkok" });
   const formatTime = (d: Date) =>
-    d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+    d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" });
 
   return (
     <div className={`bg-white rounded-xl border border-l-4 ${cfg.border} shadow-sm overflow-hidden`}>

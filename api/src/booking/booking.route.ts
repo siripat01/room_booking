@@ -2,6 +2,7 @@ import Elysia, { t } from "elysia";
 import { betterAuth } from "../middleware/auth.middleware";
 import { BookingService } from "./booking.service";
 import { isBookingPolicyError } from "./booking.errors";
+import { CheckInPolicyError } from "../check-in/check-in.errors";
 import prisma from "../../libs/db";
 
 const bookingService = new BookingService(prisma);
@@ -157,22 +158,19 @@ const bookingRoutes = new Elysia({ prefix: "/bookings" })
             body: t.Optional(t.Object({ cancelReason: t.Optional(t.String()) })),
         },
     )
-    .get(
+    .post(
         "/:id/qr",
-        async ({ user, params: { id } }) => {
-            return bookingService.generateQr(id, user.id, user.role ?? "userRole");
+        async ({ user, params: { id }, status }) => {
+            try {
+                return await bookingService.generateQr(id, user.id, user.role ?? "userRole");
+            } catch (error) {
+                return status(400, {
+                    error: error instanceof Error ? error.message : "QR generation failed",
+                    code: error instanceof CheckInPolicyError ? error.code : "QR_GENERATION_FAILED",
+                });
+            }
         },
         { auth: true },
-    )
-    .post(
-        "/:id/checkin",
-        async ({ user, params: { id }, body, request }) => {
-            return bookingService.checkIn(id, body.qrToken, user.id, user.role ?? "userRole", requestCorrelationId(request));
-        },
-        {
-            auth: true,
-            body: t.Object({ qrToken: t.String() }),
-        },
     )
     .post(
         "/:id/checkout",
