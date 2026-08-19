@@ -85,3 +85,75 @@
 - รัน Prisma Generate ใน CI ด้วยการใช้ URL จำลอง (Dummy URL) เพื่อไม่ให้ติดปัญหาการเชื่อมต่อ Database จริง
 - ใช้คำสั่งตรวจประเภทข้อมูลใน API: `tsc --noEmit --ignoreDeprecations 6.0`
 - ใช้คำสั่ง build ใน Web: `pnpm run build`
+
+## Product Scope
+
+RoomFlow is primarily an internal physical-resource management system for a school or organization. The existing individual Free/Pro subscription remains available for compatibility, but billing is not part of the booking correctness boundary.
+
+There is currently a positioning mismatch between the internal organization workflow and individual SaaS billing. A future SaaS version should introduce organizations, tenant isolation, organization membership, and organization-level billing as a separate project.
+
+## Booking Correctness (Phase 1)
+
+Every implemented booking creation path uses `BookingPolicyService`:
+
+- Authenticated user and admin bookings
+- Kiosk walk-in bookings
+- Waitlist promotion
+
+Recurring bookings are not implemented yet. When added, each occurrence must call the same policy service.
+
+The server enforces:
+
+- A valid future `[startTime, endTime)` interval
+- Active room and room capacity
+- Configurable duration, advance-booking, and active-booking limits
+- Room role restrictions
+- Active `TimeSlot` opening hours
+- Full-day and partial `RoomClosure` periods
+- User and room overlap checks
+- Explicit `Asia/Bangkok` calendar rules with UTC instants stored as PostgreSQL `TIMESTAMPTZ`
+
+PostgreSQL GiST exclusion constraints independently prevent active room and user overlaps for `PENDING`, `CONFIRMED`, and `CHECKED_IN` bookings. Application checks remain in place for readable errors, and serializable transactions retry retryable PostgreSQL failures.
+
+## Booking State Machine
+
+```text
+PENDING   -> CONFIRMED | REJECTED | CANCELLED
+CONFIRMED -> CHECKED_IN | CANCELLED | EXPIRED
+CHECKED_IN -> COMPLETED
+```
+
+`COMPLETED`, `CANCELLED`, `REJECTED`, and `EXPIRED` are terminal. Each creation and transition writes a `BookingEvent` in the same database transaction with actor, previous/new status, safe metadata, timestamp, and request correlation ID.
+
+## Migration Process
+
+```bash
+cd api
+bun install --frozen-lockfile
+bun run prisma generate
+bun run prisma migrate deploy
+```
+
+The Phase 1 migration performs a preflight check and stops if existing active bookings overlap or contain invalid ranges. It never deletes or rewrites conflicting bookings automatically; resolve reported production data explicitly before retrying.
+
+## Tests
+
+```bash
+cd api
+bun test
+
+# Requires an isolated database with all migrations applied
+TEST_DATABASE_URL=postgresql://user:password@localhost:5432/room_booking_test \
+  bun run test:integration
+```
+
+Automated tests never require notification credentials. The concurrency integration test sends two simultaneous requests and verifies that exactly one active booking is committed.
+
+## Known Limitations and Roadmap
+
+- QR/device hardening and the unified `-10/+12 minute` check-in window are Phase 2.
+- LINE Notify replacement and durable notification jobs are Phase 3.
+- Multi-instance-safe scheduling and the admin audit timeline are Phase 4.
+- Full API/frontend/E2E quality gates are Phase 5.
+- Recurring bookings, SSE room status, and smart alternatives are Phase 6.
+- Smart occupancy remains optional and feature-flagged for a later project.

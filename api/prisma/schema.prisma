@@ -22,6 +22,23 @@ enum BookingStatus {
   EXPIRED // ไม่มาเช็คอินภายใน grace period
 }
 
+enum BookingActorType {
+  USER
+  ADMIN
+  DEVICE
+  SYSTEM
+}
+
+enum BookingEventType {
+  CREATED
+  APPROVED
+  REJECTED
+  CANCELLED
+  CHECKED_IN
+  COMPLETED
+  EXPIRED
+}
+
 enum DayOfWeek {
   SUNDAY
   MONDAY
@@ -33,37 +50,37 @@ enum DayOfWeek {
 }
 
 model User {
-  id            String    @id
-  name          String
-  email         String    @unique
-  emailVerified Boolean   @default(false)
-  image         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  accounts      Account[]
-  sessions      Session[]
-  bookings         Booking[]
-  waitlistEntries  WaitlistEntry[]
+  id              String          @id
+  name            String
+  email           String          @unique
+  emailVerified   Boolean         @default(false)
+  image           String?
+  createdAt       DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime        @updatedAt @db.Timestamptz(3)
+  accounts        Account[]
+  sessions        Session[]
+  bookings        Booking[]
+  waitlistEntries WaitlistEntry[]
 
   role       String?
   banned     Boolean?  @default(false)
   banReason  String?
-  banExpires DateTime?
+  banExpires DateTime? @db.Timestamptz(3)
 
   lineNotifyToken  String?   @map("line_notify_token")
   plan             String    @default("FREE")
   stripeCustomerId String?   @map("stripe_customer_id")
-  planExpiresAt    DateTime? @map("plan_expires_at")
+  planExpiresAt    DateTime? @map("plan_expires_at") @db.Timestamptz(3)
 
   @@map("user")
 }
 
 model Session {
   id        String   @id
-  expiresAt DateTime
+  expiresAt DateTime @db.Timestamptz(3)
   token     String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
   ipAddress String?
   userAgent String?
   userId    String
@@ -83,12 +100,12 @@ model Account {
   accessToken           String?
   refreshToken          String?
   idToken               String?
-  accessTokenExpiresAt  DateTime?
-  refreshTokenExpiresAt DateTime?
+  accessTokenExpiresAt  DateTime? @db.Timestamptz(3)
+  refreshTokenExpiresAt DateTime? @db.Timestamptz(3)
   scope                 String?
   password              String?
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
+  createdAt             DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime  @updatedAt @db.Timestamptz(3)
   user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
@@ -99,9 +116,9 @@ model Verification {
   id         String   @id
   identifier String
   value      String
-  expiresAt  DateTime
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  expiresAt  DateTime @db.Timestamptz(3)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(3)
 
   @@index([identifier])
   @@map("verification")
@@ -130,8 +147,8 @@ model Room {
   waitlistEntries WaitlistEntry[]
   device          Device?
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("rooms")
 }
@@ -162,40 +179,41 @@ model Booking {
 
   // Relations
   userId String @map("user_id")
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
   roomId String @map("room_id")
   room   Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
 
   // Booking details
-  startTime DateTime      @map("start_time")
-  endTime   DateTime      @map("end_time")
+  startTime DateTime      @map("start_time") @db.Timestamptz(3)
+  endTime   DateTime      @map("end_time") @db.Timestamptz(3)
   attendees Int
   purpose   String? // หัวข้อการประชุม / วัตถุประสงค์
   status    BookingStatus @default(PENDING)
 
   // Admin action
   rejectedReason String?   @map("rejected_reason")
-  approvedAt     DateTime? @map("approved_at")
+  approvedAt     DateTime? @map("approved_at") @db.Timestamptz(3)
   approvedBy     String?   @map("approved_by") // admin user id
 
   // QR Code สำหรับ check-in
   qrToken     String?   @unique @map("qr_token")
-  qrExpiresAt DateTime? @map("qr_expires_at")
+  qrExpiresAt DateTime? @map("qr_expires_at") @db.Timestamptz(3)
 
   // Check-in / Check-out
-  checkedInAt  DateTime? @map("checked_in_at")
-  checkedOutAt DateTime? @map("checked_out_at")
+  checkedInAt  DateTime? @map("checked_in_at") @db.Timestamptz(3)
+  checkedOutAt DateTime? @map("checked_out_at") @db.Timestamptz(3)
 
   // ยกเลิกโดย user
-  cancelledAt  DateTime? @map("cancelled_at")
+  cancelledAt  DateTime? @map("cancelled_at") @db.Timestamptz(3)
   cancelReason String?   @map("cancel_reason")
 
   // Reminder tracking (PRO only)
-  reminder30SentAt      DateTime? @map("reminder_30_sent_at")
-  reminderCheckinSentAt DateTime? @map("reminder_checkin_sent_at")
+  reminder30SentAt      DateTime? @map("reminder_30_sent_at") @db.Timestamptz(3)
+  reminderCheckinSentAt DateTime? @map("reminder_checkin_sent_at") @db.Timestamptz(3)
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+  events    BookingEvent[]
 
   // index สำหรับ conflict check query
   @@index([userId])
@@ -206,6 +224,27 @@ model Booking {
   @@index([status, startTime])
   @@index([status, endTime])
   @@map("bookings")
+}
+
+model BookingEvent {
+  id        String  @id @default(uuid())
+  bookingId String  @map("booking_id")
+  booking   Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  roomId    String  @map("room_id")
+
+  actorType BookingActorType @map("actor_type")
+  actorId   String?          @map("actor_id")
+  eventType BookingEventType @map("event_type")
+
+  previousStatus BookingStatus? @map("previous_status")
+  newStatus      BookingStatus  @map("new_status")
+  metadata       Json?          @db.JsonB
+  correlationId  String?        @map("correlation_id")
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([bookingId, createdAt])
+  @@index([roomId, createdAt])
+  @@map("booking_events")
 }
 
 // ─────────────────────────────────────────────
@@ -224,10 +263,10 @@ model Device {
   deviceKey String @unique @map("device_key")
 
   isActive   Boolean   @default(true) @map("is_active")
-  lastSeenAt DateTime? @map("last_seen_at")
+  lastSeenAt DateTime? @map("last_seen_at") @db.Timestamptz(3)
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@index([deviceKey])
   @@map("devices")
@@ -247,7 +286,7 @@ model RoomClosure {
   startTime String? @map("start_time")
   endTime   String? @map("end_time")
 
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([roomId, date])
   @@map("room_closures")
@@ -264,18 +303,18 @@ enum WaitlistStatus {
 }
 
 model WaitlistEntry {
-  id        String         @id @default(uuid())
-  userId    String         @map("user_id")
-  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  roomId    String         @map("room_id")
-  room      Room           @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  startTime DateTime       @map("start_time")
-  endTime   DateTime       @map("end_time")
-  attendees Int
-  purpose   String?
-  status    WaitlistStatus @default(WAITING)
-  notifiedAt DateTime?     @map("notified_at")
-  createdAt DateTime       @default(now()) @map("created_at")
+  id         String         @id @default(uuid())
+  userId     String         @map("user_id")
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roomId     String         @map("room_id")
+  room       Room           @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  startTime  DateTime       @map("start_time") @db.Timestamptz(3)
+  endTime    DateTime       @map("end_time") @db.Timestamptz(3)
+  attendees  Int
+  purpose    String?
+  status     WaitlistStatus @default(WAITING)
+  notifiedAt DateTime?      @map("notified_at") @db.Timestamptz(3)
+  createdAt  DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([userId])
   @@index([roomId, startTime, endTime, status])

@@ -2,6 +2,7 @@ import Elysia, { t } from "elysia";
 import { RoomService } from "./room.service";
 import prisma from "../../libs/db";
 import { betterAuth } from "../middleware/auth.middleware";
+import { getBangkokDateTime } from "../lib/bangkok-time";
 
 const roomService = new RoomService(prisma);
 
@@ -30,7 +31,7 @@ const roomRoutes = new Elysia()
     })
     .get("/rooms/:id", ({ params: { id } }) => roomService.getRoomById(id), { auth: true })
     .get("/rooms/:id/availability", ({ params: { id }, query }) => {
-        const date = query.date ?? new Date().toISOString().split("T")[0];
+        const date = query.date ?? getBangkokDateTime(new Date()).date;
         return roomService.getRoomAvailability(id, date);
     }, {
         auth: true,
@@ -40,7 +41,7 @@ const roomRoutes = new Elysia()
     .get("/rooms/:id/time-slots", ({ params: { id } }) => roomService.getTimeSlots(id), { auth: true })
     .get("/rooms/:id/closures", ({ params: { id } }) => roomService.getClosures(id), { auth: true })
     .get("/rooms/:id/calendar", ({ params: { id }, query }) =>
-        roomService.getRoomCalendar(id, query.date ?? new Date().toISOString().split("T")[0]), {
+        roomService.getRoomCalendar(id, query.date ?? getBangkokDateTime(new Date()).date), {
         auth: true,
         query: t.Object({ date: t.Optional(t.String()) }),
     })

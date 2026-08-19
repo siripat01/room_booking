@@ -1,22 +1,18 @@
 import prisma from "../../libs/db";
 import { sendBookingReminder30, sendBookingReminderCheckin } from "../lib/email";
 import { sendLineNotify } from "../lib/lineNotify";
+import { BookingService } from "../booking/booking.service";
+
+const bookingService = new BookingService(prisma);
 
 async function runAutoCheckout() {
     const now = new Date();
 
-    const completed = await prisma.booking.updateMany({
-        where: { status: "CHECKED_IN", endTime: { lt: now } },
-        data: { status: "COMPLETED", checkedOutAt: now },
-    });
+    const completed = await bookingService.completeDueBookings(now);
+    const expired = await bookingService.expireDueBookings(now);
 
-    const expired = await prisma.booking.updateMany({
-        where: { status: "CONFIRMED", startTime: { lt: new Date(now.getTime() - 12 * 60 * 1000) } },
-        data: { status: "EXPIRED" },
-    });
-
-    if (completed.count > 0 || expired.count > 0) {
-        console.log(`[cron] checkout: completed=${completed.count} expired=${expired.count}`);
+    if (completed > 0 || expired > 0) {
+        console.log(`[cron] checkout: completed=${completed} expired=${expired}`);
     }
 }
 

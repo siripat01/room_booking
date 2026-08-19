@@ -79,13 +79,13 @@ export const deviceRoutes = new Elysia()
         if (!device) return status(403);
         return await deviceService.getDeviceSchedule(id);
     }, { auth: false })
-    .post("/devices/:id/scan", async ({ params: { id }, headers, body, status }) => {
+    .post("/devices/:id/scan", async ({ params: { id }, headers, body, status, request }) => {
         const deviceKey = headers["x-device-key"];
         if (!deviceKey) return status(401);
         const device = await prisma.device.findFirst({ where: { id, deviceKey } });
         if (!device) return status(403);
         try {
-            return await deviceService.scanQr(id, body.qrToken);
+            return await deviceService.scanQr(id, body.qrToken, request.headers.get("x-request-id") ?? crypto.randomUUID());
         } catch (e: any) {
             return status(400, { message: e.message });
         }
@@ -93,7 +93,7 @@ export const deviceRoutes = new Elysia()
         auth: false,
         body: t.Object({ qrToken: t.String() }),
     })
-    .post("/devices/:id/walkin", async ({ params: { id }, headers, body, status: setStatus }) => {
+    .post("/devices/:id/walkin", async ({ params: { id }, headers, body, status: setStatus, request }) => {
         const deviceKey = headers["x-device-key"];
         if (!deviceKey) return setStatus(401);
         const device = await prisma.device.findFirst({
@@ -117,6 +117,12 @@ export const deviceRoutes = new Elysia()
                 purpose: body.purpose ?? "Walk-in Booking",
                 autoConfirm: device.room.autoApprove,
                 userRole: "adminRole",
+                actor: {
+                    type: "DEVICE",
+                    id: device.id,
+                    correlationId: request.headers.get("x-request-id") ?? crypto.randomUUID(),
+                    metadata: { source: "walk-in" },
+                },
             });
         } catch (e: any) {
             return setStatus(400, { error: e.message });

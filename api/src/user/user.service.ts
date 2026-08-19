@@ -57,8 +57,14 @@ export class UserService {
   }
 
   async deleteUser(id: string) {
-    const user = await this.prisma.user.findUnique({ where: { id } });
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: { id: true, _count: { select: { bookings: true } } },
+    });
     if (!user) throw new Error("User not found");
+    if (user._count.bookings > 0) {
+      throw new Error("Cannot delete a user with booking history; ban the account instead");
+    }
     await this.prisma.user.delete({ where: { id } });
     return { success: true };
   }

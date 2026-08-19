@@ -1,6 +1,8 @@
 import { PrismaClient } from "../../generated/prisma/client";
 import type { CreateDeviceInput, UpdateDeviceInput } from "../../type/device";
 import { randomBytes } from "crypto";
+import { BookingService } from "../booking/booking.service";
+import { bangkokDayBounds, getBangkokDateTime } from "../lib/bangkok-time";
 
 function generateDeviceKey(): string {
     return "dk_" + randomBytes(16).toString("hex");
@@ -11,7 +13,11 @@ function generateDeviceKey(): string {
 const CHECKIN_GRACE_MS = 12 * 60 * 1000;
 
 export class DeviceService {
-    constructor(private prisma: PrismaClient) { }
+    private readonly bookingService: BookingService;
+
+    constructor(private prisma: PrismaClient) {
+        this.bookingService = new BookingService(prisma);
+    }
 
     async createDevice(data: CreateDeviceInput) {
         const deviceKey = generateDeviceKey();
@@ -145,16 +151,14 @@ export class DeviceService {
         if (!device) throw new Error("Device not found");
         if (!device.roomId) return { device, bookings: [] };
 
-        const today = new Date();
-        const start = new Date(today.setHours(0, 0, 0, 0));
-        const end = new Date(today.setHours(23, 59, 59, 999));
+        const { start, end } = bangkokDayBounds(getBangkokDateTime(new Date()).date);
 
         const bookings = await this.prisma.booking.findMany({
             where: {
                 roomId: device.roomId,
                 status: { in: ["PENDING", "CONFIRMED", "CHECKED_IN"] },
                 startTime: { gte: start },
-                endTime: { lte: end },
+                endTime: { lt: end },
             },
             include: { user: { select: { name: true } } },
             orderBy: { startTime: "asc" },
@@ -195,7 +199,7 @@ export class DeviceService {
         return { deviceId, deviceKey };
     }
 
-    async scanQr(id: string, qrToken: string) {
+    async scanQr(id: string, qrToken: string, correlationId?: string) {
         const device = await this.prisma.device.findUnique({ where: { id } });
         if (!device) throw new Error("Device not found");
 
@@ -210,20 +214,19 @@ export class DeviceService {
         if (!booking) throw new Error("Invalid QR token");
         if (booking.status !== "CONFIRMED") throw new Error("Booking is not confirmed");
         if (!booking.qrExpiresAt || booking.qrExpiresAt < new Date()) throw new Error("QR token has expired");
-        if (device.roomId && booking.roomId !== device.roomId) throw new Error("QR code is for a different room");
+        if (!device.roomId) throw new Error("Device is not linked to a room");
+        if (booking.roomId !== device.roomId) throw new Error("QR code is for a different room");
 
         const now = new Date();
         const checkInOpens = new Date(booking.startTime.getTime() - 10 * 60 * 1000);
         if (now < checkInOpens) throw new Error("Too early to check in — opens 10 minutes before start");
         if (now > booking.startTime) throw new Error("Check-in window has passed");
 
-        return this.prisma.booking.update({
-            where: { id: booking.id },
-            data: { status: "CHECKED_IN", checkedInAt: new Date(), qrToken: null, qrExpiresAt: null },
-            include: {
-                room: { select: { name: true, floor: true } },
-                user: { select: { name: true, email: true } },
-            },
-        });
+        return this.bookingService.checkInByDevice(
+            booking.id,
+            qrToken,
+            { id: device.id, roomId: device.roomId },
+            correlationId,
+        );
     }
 }
