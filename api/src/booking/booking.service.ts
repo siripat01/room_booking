@@ -1,12 +1,4 @@
 import type { Prisma, PrismaClient } from "../../generated/prisma/client";
-import {
-  sendBookingApproved,
-  sendBookingRejected,
-  sendBookingReminder30,
-  sendBookingReminderCheckin,
-  sendWaitlistPromoted,
-} from "../lib/email";
-import { sendLineNotify } from "../lib/lineNotify";
 import { isExclusionConstraintError, withSerializableRetry } from "../lib/transaction-retry";
 import { bangkokDayBounds, getBangkokDateTime } from "../lib/bangkok-time";
 import { BookingPolicyError } from "./booking.errors";
@@ -17,6 +9,7 @@ import {
 } from "../check-in/check-in-policy.service";
 import { CheckInPolicyError } from "../check-in/check-in.errors";
 import { generateOpaqueToken, hashOpaqueToken } from "../lib/opaque-token";
+import { NotificationService } from "../notification/notification.service";
 
 type BookingStatus = "PENDING" | "CONFIRMED" | "CHECKED_IN" | "COMPLETED" | "CANCELLED" | "REJECTED" | "EXPIRED";
 type BookingActorType = "USER" | "ADMIN" | "DEVICE" | "SYSTEM";
@@ -71,6 +64,7 @@ export class BookingService {
     private readonly prisma: PrismaClient,
     private readonly policy = new BookingPolicyService(),
     private readonly checkInPolicy: CheckInPolicyService = new CheckInPolicyService(),
+    private readonly notifications = new NotificationService(prisma),
   ) {}
 
   async createBooking(data: CreateBookingData) {
@@ -95,7 +89,7 @@ export class BookingService {
           },
           include: {
             room: { select: { name: true, floor: true } },
-            user: { select: { name: true, email: true, lineNotifyToken: true, plan: true } },
+            user: { select: { name: true, email: true, plan: true } },
           },
         });
 
@@ -111,7 +105,9 @@ export class BookingService {
         return created;
       });
 
-      await this.safelyNotify(() => this.sendConfirmationAndImmediateReminders(booking));
+      if (booking.status === "CONFIRMED") {
+        await this.notifications.safelyEnqueueConfirmedBooking(booking.id);
+      }
       return withoutQrTokenHash(booking);
     } catch (error) {
       if (isExclusionConstraintError(error)) {
@@ -212,12 +208,7 @@ export class BookingService {
       { type: "ADMIN", id: adminId, correlationId },
       { approvedAt: new Date(), approvedBy: adminId },
     );
-    if (updated.user.plan === "PRO") {
-      await this.safelyNotify(() => sendBookingApproved(this.emailData(updated)));
-      if (updated.user.lineNotifyToken) {
-        void sendLineNotify(updated.user.lineNotifyToken, `✅ การจองได้รับการอนุมัติ\nห้อง: ${updated.room.name}`);
-      }
-    }
+    await this.notifications.safelyEnqueueConfirmedBooking(updated.id);
     return updated;
   }
 
@@ -229,12 +220,7 @@ export class BookingService {
       { rejectedReason: reason },
       { reason },
     );
-    if (updated.user.plan === "PRO") {
-      await this.safelyNotify(() => sendBookingRejected({ ...this.emailData(updated), reason }));
-      if (updated.user.lineNotifyToken) {
-        void sendLineNotify(updated.user.lineNotifyToken, `❌ การจองถูกปฏิเสธ\nห้อง: ${updated.room.name}\nเหตุผล: ${reason}`);
-      }
-    }
+    await this.notifications.safelyEnqueueBooking("BOOKING_REJECTED", updated.id);
     await this.promoteWaitlist(updated.roomId, updated.startTime, updated.endTime);
     return updated;
   }
@@ -537,7 +523,7 @@ export class BookingService {
           where: { roomId, startTime, endTime, status: "WAITING" },
           orderBy: { createdAt: "asc" },
           include: {
-            user: { select: { name: true, email: true, lineNotifyToken: true, plan: true, role: true } },
+            user: { select: { name: true, email: true, plan: true, role: true } },
             room: { select: { name: true, floor: true } },
           },
         });
@@ -587,18 +573,7 @@ export class BookingService {
     }
     if (!promoted) return;
 
-    const reminderData = {
-      userEmail: promoted.entry.user.email,
-      userName: promoted.entry.user.name,
-      roomName: promoted.entry.room.name,
-      roomFloor: promoted.entry.room.floor,
-      startTime,
-      endTime,
-    };
-    await this.safelyNotify(() => sendWaitlistPromoted(reminderData));
-    if (promoted.entry.user.lineNotifyToken) {
-      void sendLineNotify(promoted.entry.user.lineNotifyToken, `✅ คุณได้รับการเลื่อนขึ้นจากรายการรอ ห้อง ${promoted.entry.room.name}`);
-    }
+    await this.notifications.safelyEnqueueBooking("WAITLIST_PROMOTED", promoted.bookingId);
   }
 
   private async transitionBooking(
@@ -640,7 +615,7 @@ export class BookingService {
         where: { id },
         include: {
           room: { select: { name: true, floor: true } },
-          user: { select: { name: true, email: true, lineNotifyToken: true, plan: true } },
+          user: { select: { name: true, email: true, plan: true } },
         },
       });
       return withoutQrTokenHash(result);
@@ -679,47 +654,4 @@ export class BookingService {
     return { type: role === "adminRole" ? "ADMIN" : "USER", id: userId, correlationId };
   }
 
-  private emailData(booking: any) {
-    return {
-      userEmail: booking.user.email,
-      userName: booking.user.name,
-      roomName: booking.room.name,
-      roomFloor: booking.room.floor,
-      startTime: booking.startTime,
-      endTime: booking.endTime,
-      purpose: booking.purpose,
-    };
-  }
-
-  private async sendConfirmationAndImmediateReminders(booking: any) {
-    if (booking.user.plan !== "PRO" || booking.status !== "CONFIRMED") return;
-    const now = new Date();
-    const minsUntilStart = (booking.startTime.getTime() - now.getTime()) / 60_000;
-    const reminderData = this.emailData(booking);
-    await sendBookingApproved(reminderData);
-    if (booking.user.lineNotifyToken) {
-      void sendLineNotify(booking.user.lineNotifyToken, `✅ การจองได้รับการยืนยัน\nห้อง: ${booking.room.name}`);
-    }
-
-    const updates: { reminder30SentAt?: Date; reminderCheckinSentAt?: Date } = {};
-    if (minsUntilStart > 5 && minsUntilStart <= 35) {
-      await sendBookingReminder30(reminderData);
-      updates.reminder30SentAt = now;
-    }
-    if (minsUntilStart <= 5 && minsUntilStart > -10) {
-      await sendBookingReminderCheckin(reminderData);
-      updates.reminderCheckinSentAt = now;
-    }
-    if (Object.keys(updates).length > 0) {
-      await this.prisma.booking.update({ where: { id: booking.id }, data: updates });
-    }
-  }
-
-  private async safelyNotify(operation: () => Promise<unknown>) {
-    try {
-      await operation();
-    } catch (error) {
-      console.error("[notification] Delivery failed after booking transaction committed", error);
-    }
-  }
 }

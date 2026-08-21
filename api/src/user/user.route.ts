@@ -2,39 +2,69 @@ import Elysia, { t } from "elysia";
 import { betterAuth } from "../middleware/auth.middleware";
 import { UserService } from "./user.service";
 import prisma from "../../libs/db";
-import { sendLineNotify } from "../lib/lineNotify";
+import { NotificationService } from "../notification/notification.service";
+import { LineLinkService } from "../notification/line-link.service";
+import { DatabaseRateLimiter } from "../lib/database-rate-limiter";
 
 const userService = new UserService(prisma);
+const notificationService = new NotificationService(prisma);
+const lineLinkService = new LineLinkService(prisma);
+const limiter = new DatabaseRateLimiter(prisma);
 
 const userRoutes = new Elysia({ prefix: "/users" })
   .use(betterAuth)
-  // ── Self-service Line Notify (any authenticated user) ──────────────────────
-  .get("/me/line-notify", async ({ user, status }) => {
+  // ── Self-service notification preferences and LINE Messaging link ─────────
+  .get("/me/notifications", async ({ user, status }) => {
     if (!user) return status(401);
-    const u = await prisma.user.findUnique({ where: { id: user.id }, select: { lineNotifyToken: true } });
-    return { connected: !!u?.lineNotifyToken };
+    const [preferences, line] = await Promise.all([
+      notificationService.getPreferences(user.id),
+      lineLinkService.getStatus(user.id),
+    ]);
+    return { preferences, line };
   }, { auth: true })
-  .put("/me/line-notify", async ({ user, body, status }) => {
+  .patch("/me/notifications/preferences", async ({ user, body, status }) => {
     if (!user) return status(401);
-    await prisma.user.update({ where: { id: user.id }, data: { lineNotifyToken: body.token } });
-    return { success: true };
-  }, { auth: true, body: t.Object({ token: t.String() }) })
-  .delete("/me/line-notify", async ({ user, status }) => {
+    return notificationService.updatePreferences(user.id, body);
+  }, {
+    auth: true,
+    body: t.Object({
+      emailEnabled: t.Optional(t.Boolean()),
+      lineEnabled: t.Optional(t.Boolean()),
+      bookingUpdatesEnabled: t.Optional(t.Boolean()),
+      reminder30Enabled: t.Optional(t.Boolean()),
+      checkInReminderEnabled: t.Optional(t.Boolean()),
+      waitlistEnabled: t.Optional(t.Boolean()),
+    }),
+  })
+  .post("/me/line-link", async ({ user, status }) => {
     if (!user) return status(401);
-    await prisma.user.update({ where: { id: user.id }, data: { lineNotifyToken: null } });
-    return { success: true };
+    const rate = await limiter.consume("line-link-create", user.id, 5, 10 * 60);
+    if (!rate.allowed) {
+      return status(429, { error: "Too many LINE link attempts", retryAfterSeconds: rate.retryAfterSeconds });
+    }
+    try {
+      return await lineLinkService.createCode(user.id);
+    } catch (error) {
+      return status(400, { error: error instanceof Error ? error.message : "Unable to create LINE link code" });
+    }
+  }, { auth: true })
+  .delete("/me/line-link", async ({ user, status }) => {
+    if (!user) return status(401);
+    return lineLinkService.disconnect(user.id);
   }, { auth: true })
   .get("/me/plan", async ({ user, status }) => {
     if (!user) return status(401);
     const u = await prisma.user.findUnique({ where: { id: user.id }, select: { plan: true, planExpiresAt: true } });
     return { plan: u?.plan ?? "FREE", planExpiresAt: u?.planExpiresAt ?? null };
   }, { auth: true })
-  .post("/me/line-notify/test", async ({ user, status: setStatus }) => {
-    if (!user) return setStatus(401);
-    const u = await prisma.user.findUnique({ where: { id: user.id }, select: { lineNotifyToken: true } });
-    if (!u?.lineNotifyToken) return setStatus(400, { error: "No Line Notify token configured" });
-    await sendLineNotify(u.lineNotifyToken, "🔔 ทดสอบการแจ้งเตือน Room Booking สำเร็จ!");
-    return { success: true };
+  .post("/me/notifications/test", async ({ user, status }) => {
+    if (!user) return status(401);
+    const rate = await limiter.consume("notification-test", user.id, 5, 10 * 60);
+    if (!rate.allowed) {
+      return status(429, { error: "Too many test notifications", retryAfterSeconds: rate.retryAfterSeconds });
+    }
+    const queued = await notificationService.enqueueTest(user.id);
+    return { queued };
   }, { auth: true })
   // ── Admin-only ─────────────────────────────────────────────────────────────
   .guard({ auth: true }, (app) =>
