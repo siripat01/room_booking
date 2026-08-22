@@ -1,17 +1,26 @@
-import { useTitle } from "../lib/useTitle";
-import { createFileRoute, redirect } from "@tanstack/react-router";
-import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useCurrentUser } from "../lib/useCurrentUser";
-import { sessionQuery } from "../lib/queries";
-import { Navbar } from "../components/Navbar";
-import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
-import { Label } from "../components/ui/label";
-import { Bell, CheckCircle2, Loader2, Trash2, Zap } from "lucide-react";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  Bell,
+  CheckCircle2,
+  Copy,
+  ExternalLink,
+  Link2,
+  Loader2,
+  Mail,
+  MessageCircle,
+  Trash2,
+  Zap,
+} from "lucide-react";
 import { toast } from "sonner";
-import { Link } from "@tanstack/react-router";
+import { Navbar } from "../components/Navbar";
 import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { Checkbox } from "../components/ui/checkbox";
+import { sessionQuery } from "../lib/queries";
+import { useCurrentUser } from "../lib/useCurrentUser";
+import { useTitle } from "../lib/useTitle";
 
 export const Route = createFileRoute("/settings")({
   beforeLoad: async ({ context: { queryClient }, location }) => {
@@ -19,102 +28,161 @@ export const Route = createFileRoute("/settings")({
     try {
       const user = await queryClient.ensureQueryData(sessionQuery());
       if (!user) throw redirect({ to: "/", search: { redirect: location.pathname } });
-    } catch (e: any) {
-      if (e?.isRedirect) throw e;
+    } catch (error: any) {
+      if (error?.isRedirect) throw error;
       throw redirect({ to: "/", search: { redirect: location.pathname } });
     }
   },
   component: SettingsPage,
 });
 
+type NotificationPreferences = {
+  emailEnabled: boolean;
+  lineEnabled: boolean;
+  bookingUpdatesEnabled: boolean;
+  reminder30Enabled: boolean;
+  checkInReminderEnabled: boolean;
+  waitlistEnabled: boolean;
+};
+
+type NotificationSettings = {
+  preferences: NotificationPreferences;
+  line: {
+    connected: boolean;
+    botBasicId: string | null;
+    addFriendUrl: string | null;
+  };
+};
+
+type LinkCode = {
+  code: string;
+  expiresAt: string;
+  botBasicId: string | null;
+  addFriendUrl: string | null;
+};
+
+const preferenceOptions: Array<{
+  key: keyof NotificationPreferences;
+  title: string;
+  description: string;
+}> = [
+  { key: "bookingUpdatesEnabled", title: "Booking updates", description: "แจ้งเมื่อการจองได้รับอนุมัติหรือถูกปฏิเสธ" },
+  { key: "reminder30Enabled", title: "30-minute reminder", description: "แจ้งเตือนก่อนเวลาเริ่ม 30 นาที" },
+  { key: "checkInReminderEnabled", title: "Check-in reminder", description: "แจ้งเมื่อเข้าสู่ช่วงเวลาเช็คอิน" },
+  { key: "waitlistEnabled", title: "Waitlist promotion", description: "แจ้งเมื่อได้รับห้องจากรายการรอ" },
+];
+
 function SettingsPage() {
   useTitle("Settings");
   const { user } = useCurrentUser();
-  const qc = useQueryClient();
-  const [tokenInput, setTokenInput] = useState("");
+  const queryClient = useQueryClient();
+  const [linkCode, setLinkCode] = useState<LinkCode | null>(null);
+
   const { data: planData } = useQuery({
     queryKey: ["my-plan"],
     queryFn: async () => {
-      const res = await fetch("/api/users/me/plan", { credentials: "include" });
-      if (!res.ok) throw new Error("Failed");
-      return res.json() as Promise<{ plan: string; planExpiresAt: string | null }>;
+      const response = await fetch("/api/users/me/plan", { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to load plan");
+      return response.json() as Promise<{ plan: string; planExpiresAt: string | null }>;
     },
   });
+
+  const { data: notificationSettings, isLoading: notificationsLoading } = useQuery({
+    queryKey: ["notification-settings"],
+    queryFn: async () => {
+      const response = await fetch("/api/users/me/notifications", { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to load notification settings");
+      return response.json() as Promise<NotificationSettings>;
+    },
+    refetchInterval: linkCode ? 5_000 : false,
+  });
+
+  useEffect(() => {
+    if (linkCode && notificationSettings?.line.connected) {
+      setLinkCode(null);
+      toast.success("เชื่อมต่อ LINE Messaging สำเร็จแล้ว");
+    }
+  }, [linkCode, notificationSettings?.line.connected]);
 
   const isPro = planData?.plan === "PRO";
   const cancelledAt = planData?.planExpiresAt ? new Date(planData.planExpiresAt) : null;
 
   const portalMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch("/api/subscription/portal", { method: "POST", credentials: "include" });
-      if (!res.ok) throw new Error("Failed");
-      const { url } = await res.json();
+      const response = await fetch("/api/subscription/portal", { method: "POST", credentials: "include" });
+      if (!response.ok) throw new Error("Failed to open subscription portal");
+      const { url } = await response.json();
       return url as string;
     },
     onSuccess: (url) => { window.location.href = url; },
     onError: () => toast.error("เกิดข้อผิดพลาด"),
   });
 
-  const { data: lineStatus, isLoading: lineLoading } = useQuery({
-    queryKey: ["line-notify-status"],
-    queryFn: async () => {
-      const res = await fetch("/api/users/me/line-notify", { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch");
-      return res.json() as Promise<{ connected: boolean }>;
-    },
-  });
-
-  const saveMutation = useMutation({
-    mutationFn: async (token: string) => {
-      const res = await fetch("/api/users/me/line-notify", {
-        method: "PUT",
+  const preferenceMutation = useMutation({
+    mutationFn: async (update: Partial<NotificationPreferences>) => {
+      const response = await fetch("/api/users/me/notifications/preferences", {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ token }),
+        body: JSON.stringify(update),
       });
-      if (!res.ok) throw new Error("Failed to save");
+      if (!response.ok) throw new Error("Failed to update notification preferences");
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["line-notify-status"] });
-      setTokenInput("");
-      toast.success("บันทึก Line Notify Token แล้ว");
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["notification-settings"] }),
+    onError: () => toast.error("บันทึกการตั้งค่าไม่สำเร็จ"),
+  });
+
+  const createLinkMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch("/api/users/me/line-link", { method: "POST", credentials: "include" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error ?? "Failed to create link code");
+      return data as LinkCode;
     },
-    onError: () => toast.error("บันทึกไม่สำเร็จ"),
+    onSuccess: setLinkCode,
+    onError: (error) => toast.error(error.message),
   });
 
   const disconnectMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch("/api/users/me/line-notify", { method: "DELETE", credentials: "include" });
-      if (!res.ok) throw new Error("Failed");
+      const response = await fetch("/api/users/me/line-link", { method: "DELETE", credentials: "include" });
+      if (!response.ok) throw new Error("Failed to disconnect LINE");
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["line-notify-status"] });
-      toast.success("ยกเลิกการเชื่อมต่อ Line Notify แล้ว");
+      setLinkCode(null);
+      queryClient.invalidateQueries({ queryKey: ["notification-settings"] });
+      toast.success("ยกเลิกการเชื่อมต่อ LINE แล้ว");
     },
-    onError: () => toast.error("เกิดข้อผิดพลาด"),
+    onError: () => toast.error("ยกเลิกการเชื่อมต่อไม่สำเร็จ"),
   });
 
   const testMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch("/api/users/me/line-notify/test", { method: "POST", credentials: "include" });
-      if (!res.ok) throw new Error("Failed");
+      const response = await fetch("/api/users/me/notifications/test", { method: "POST", credentials: "include" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error ?? "Failed to queue notification");
+      return data as { queued: number };
     },
-    onSuccess: () => toast.success("ส่ง test notification แล้ว กรุณาตรวจสอบ Line ของคุณ"),
-    onError: () => toast.error("ส่งไม่สำเร็จ"),
+    onSuccess: ({ queued }) => toast.success(queued > 0 ? `เพิ่มการแจ้งเตือนทดสอบ ${queued} รายการในคิวแล้ว` : "ไม่มีช่องทางที่เปิดใช้งาน"),
+    onError: (error) => toast.error(error.message),
   });
+
+  const copyLinkCommand = async () => {
+    if (!linkCode) return;
+    await navigator.clipboard.writeText(`LINK ${linkCode.code}`);
+    toast.success("คัดลอกคำสั่งเชื่อมต่อแล้ว");
+  };
 
   return (
     <div className="min-h-screen bg-slate-50">
       <Navbar user={user} />
-
-      <main className="max-w-2xl mx-auto px-4 sm:px-6 py-8">
+      <main className="max-w-2xl mx-auto px-4 sm:px-6 py-8 space-y-4">
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-slate-900">Settings</h1>
           <p className="text-muted-foreground text-sm mt-1">จัดการการแจ้งเตือนและการตั้งค่าส่วนตัว</p>
         </div>
 
-        {/* Subscription */}
-        <div className="bg-white rounded-xl border shadow-sm p-6 mb-4">
+        <section className="bg-white rounded-xl border shadow-sm p-6">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
               <Zap className="w-5 h-5 text-blue-600" />
@@ -124,122 +192,143 @@ function SettingsPage() {
               <p className="text-xs text-muted-foreground">แผนการใช้งานของคุณ</p>
             </div>
             <div className="ml-auto">
-              {isPro
-                ? <Badge className="bg-blue-600 text-white">Pro</Badge>
-                : <Badge variant="secondary">Free</Badge>}
+              {isPro ? <Badge className="bg-blue-600 text-white">Pro</Badge> : <Badge variant="secondary">Free</Badge>}
             </div>
           </div>
           {isPro ? (
             <div className="space-y-3">
               {cancelledAt ? (
                 <p className="text-sm text-slate-600">
-                  คุณยกเลิก Pro แล้ว — ยังใช้งานได้จนถึง{" "}
-                  <strong className="text-amber-600">
+                  คุณยกเลิก Pro แล้ว — ยังใช้งานได้จนถึง <strong className="text-amber-600">
                     {cancelledAt.toLocaleDateString("th-TH", { day: "numeric", month: "long", year: "numeric" })}
                   </strong>
-                  {" "}หลังจากนั้นจะกลับเป็น Free อัตโนมัติ
                 </p>
               ) : (
-                <p className="text-sm text-slate-600">คุณใช้งาน <strong>Pro plan</strong> อยู่ — จองล่วงหน้าได้ 30 วัน, สูงสุด 10 รายการ, รับการแจ้งเตือน Email + Line</p>
+                <p className="text-sm text-slate-600">คุณใช้งาน <strong>Pro plan</strong> อยู่ — รับการแจ้งเตือน Email และ LINE Messaging ตาม preferences ด้านล่าง</p>
               )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => portalMutation.mutate()}
-                disabled={portalMutation.isPending}
-              >
+              <Button variant="outline" size="sm" onClick={() => portalMutation.mutate()} disabled={portalMutation.isPending}>
                 {portalMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
                 {cancelledAt ? "ต่ออายุ Subscription" : "จัดการ Subscription"}
               </Button>
             </div>
           ) : (
             <div className="space-y-3">
-              <p className="text-sm text-slate-600">คุณใช้งาน <strong>Free plan</strong> — จองล่วงหน้าได้ 3 วัน, สูงสุด 3 รายการพร้อมกัน</p>
+              <p className="text-sm text-slate-600">คุณใช้งาน <strong>Free plan</strong> — การแจ้งเตือนการจองอัตโนมัติยังเป็นสิทธิ์ของ Pro ตามพฤติกรรมเดิม</p>
               <Button size="sm" className="bg-blue-600 hover:bg-blue-700" asChild>
                 <Link to="/pricing">อัปเกรดเป็น Pro →</Link>
               </Button>
             </div>
           )}
-        </div>
+        </section>
 
-        {/* Line Notify */}
-        <div className="bg-white rounded-xl border shadow-sm p-6">
-          <div className="flex items-center gap-3 mb-1">
-            <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center shrink-0">
-              <Bell className="w-5 h-5 text-green-600" />
+        <section className="bg-white rounded-xl border shadow-sm p-6">
+          <div className="flex items-center gap-3 mb-5">
+            <div className="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0">
+              <Bell className="w-5 h-5 text-indigo-600" />
             </div>
             <div>
-              <h2 className="font-semibold text-slate-800">Line Notify</h2>
-              <p className="text-xs text-muted-foreground">รับการแจ้งเตือนการจองผ่าน Line</p>
+              <h2 className="font-semibold text-slate-800">Notification preferences</h2>
+              <p className="text-xs text-muted-foreground">เลือกช่องทางและเหตุการณ์ที่ต้องการรับ</p>
             </div>
-            {lineStatus?.connected && (
+          </div>
+          {notificationsLoading || !notificationSettings ? (
+            <div className="flex justify-center py-6"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
+          ) : (
+            <div className="space-y-5">
+              <div className="grid sm:grid-cols-2 gap-3">
+                {([
+                  ["emailEnabled", "Email", "ส่งผ่าน Resend", Mail],
+                  ["lineEnabled", "LINE Messaging", "ส่งผ่าน RoomFlow bot", MessageCircle],
+                ] as const).map(([key, title, description, Icon]) => (
+                  <label key={key} className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer">
+                    <Checkbox
+                      checked={notificationSettings.preferences[key]}
+                      onCheckedChange={(checked) => preferenceMutation.mutate({ [key]: checked === true })}
+                      disabled={preferenceMutation.isPending}
+                      className="mt-0.5"
+                    />
+                    <Icon className="w-4 h-4 mt-0.5 text-slate-500" />
+                    <span><span className="block text-sm font-medium">{title}</span><span className="block text-xs text-muted-foreground">{description}</span></span>
+                  </label>
+                ))}
+              </div>
+              <div className="space-y-1">
+                {preferenceOptions.map((option) => (
+                  <label key={option.key} className="flex items-start gap-3 rounded-lg p-2.5 hover:bg-slate-50 cursor-pointer">
+                    <Checkbox
+                      checked={notificationSettings.preferences[option.key]}
+                      onCheckedChange={(checked) => preferenceMutation.mutate({ [option.key]: checked === true })}
+                      disabled={preferenceMutation.isPending}
+                      className="mt-0.5"
+                    />
+                    <span><span className="block text-sm font-medium text-slate-700">{option.title}</span><span className="block text-xs text-muted-foreground">{option.description}</span></span>
+                  </label>
+                ))}
+              </div>
+              <Button variant="outline" size="sm" onClick={() => testMutation.mutate()} disabled={testMutation.isPending}>
+                {testMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+                ทดสอบช่องทางที่เปิดอยู่
+              </Button>
+            </div>
+          )}
+        </section>
+
+        <section className="bg-white rounded-xl border shadow-sm p-6">
+          <div className="flex items-center gap-3 mb-1">
+            <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center shrink-0">
+              <MessageCircle className="w-5 h-5 text-green-600" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-slate-800">LINE Messaging</h2>
+              <p className="text-xs text-muted-foreground">เชื่อมบัญชีกับ RoomFlow bot โดยไม่เก็บ access token ของผู้ใช้</p>
+            </div>
+            {notificationSettings?.line.connected && (
               <span className="ml-auto flex items-center gap-1 text-xs text-emerald-600 font-medium">
                 <CheckCircle2 className="w-3.5 h-3.5" /> เชื่อมต่อแล้ว
               </span>
             )}
           </div>
 
-          <div className="mt-5 space-y-4">
-            {lineLoading ? (
+          <div className="mt-5">
+            {notificationsLoading ? (
               <div className="flex justify-center py-4"><Loader2 className="w-5 h-5 animate-spin text-muted-foreground" /></div>
-            ) : lineStatus?.connected ? (
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => testMutation.mutate()}
-                  disabled={testMutation.isPending}
-                >
-                  {testMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
-                  ทดสอบการแจ้งเตือน
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => disconnectMutation.mutate()}
-                  disabled={disconnectMutation.isPending}
-                  className="text-red-600 border-red-200 hover:bg-red-50"
-                >
-                  {disconnectMutation.isPending
-                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    : <><Trash2 className="w-3.5 h-3.5 mr-1.5" />ยกเลิกการเชื่อมต่อ</>}
-                </Button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="rounded-lg bg-slate-50 border p-3 text-sm text-slate-600 space-y-1">
-                  <p className="font-medium">วิธีขอ Token:</p>
-                  <ol className="list-decimal list-inside space-y-0.5 text-xs text-muted-foreground">
-                    <li>ไปที่ notify.line.me แล้ว login ด้วย Line account</li>
-                    <li>เลือก "Generate token" แล้วตั้งชื่อ เช่น "Room Booking"</li>
-                    <li>เลือก "1-on-1 chat with LINE Notify"</li>
-                    <li>Copy token แล้วนำมาวางด้านล่าง</li>
-                  </ol>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="line-token">Line Notify Token</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="line-token"
-                      type="password"
-                      placeholder="วาง token ที่นี่…"
-                      value={tokenInput}
-                      onChange={(e) => setTokenInput(e.target.value)}
-                      className="flex-1"
-                    />
-                    <Button
-                      onClick={() => tokenInput.trim() && saveMutation.mutate(tokenInput.trim())}
-                      disabled={saveMutation.isPending || !tokenInput.trim()}
-                      className="bg-blue-600 hover:bg-blue-700"
-                    >
-                      {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "บันทึก"}
-                    </Button>
+            ) : notificationSettings?.line.connected ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => disconnectMutation.mutate()}
+                disabled={disconnectMutation.isPending}
+                className="text-red-600 border-red-200 hover:bg-red-50"
+              >
+                {disconnectMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><Trash2 className="w-3.5 h-3.5 mr-1.5" />ยกเลิกการเชื่อมต่อ</>}
+              </Button>
+            ) : linkCode ? (
+              <div className="space-y-4">
+                <div className="rounded-lg border bg-slate-50 p-4 text-sm space-y-2">
+                  <p className="font-medium">รหัสหมดอายุ {new Date(linkCode.expiresAt).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })} น.</p>
+                  <p className="text-muted-foreground">1. เพิ่ม RoomFlow bot เป็นเพื่อน 2. ส่งข้อความนี้ในแชตของ bot:</p>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 rounded-md bg-slate-900 px-3 py-2 text-center text-white font-bold tracking-widest">LINK {linkCode.code}</code>
+                    <Button variant="outline" size="icon" onClick={copyLinkCommand} aria-label="Copy link command"><Copy className="w-4 h-4" /></Button>
                   </div>
                 </div>
+                {linkCode.addFriendUrl && (
+                  <Button asChild className="bg-green-600 hover:bg-green-700">
+                    <a href={linkCode.addFriendUrl} target="_blank" rel="noreferrer">เปิด LINE และเพิ่ม bot <ExternalLink className="w-4 h-4 ml-2" /></a>
+                  </Button>
+                )}
+                <p className="text-xs text-muted-foreground">หน้านี้ตรวจสถานะอัตโนมัติทุก 5 วินาที รหัสใช้ได้ครั้งเดียวเป็นเวลา 10 นาที</p>
               </div>
+            ) : notificationSettings?.line.botBasicId ? (
+              <Button className="bg-green-600 hover:bg-green-700" onClick={() => createLinkMutation.mutate()} disabled={createLinkMutation.isPending}>
+                {createLinkMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Link2 className="w-4 h-4 mr-2" />}
+                สร้างรหัสเชื่อมต่อ LINE
+              </Button>
+            ) : (
+              <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">ผู้ดูแลระบบยังไม่ได้ตั้งค่า LINE bot สำหรับ environment นี้</p>
             )}
           </div>
-        </div>
+        </section>
       </main>
     </div>
   );

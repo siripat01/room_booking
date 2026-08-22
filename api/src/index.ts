@@ -11,6 +11,9 @@ import { deviceRoutes } from "./device/device.route";
 import reportRoutes from "./report/report.route";
 import { subscriptionRoutes } from "./subscription/subscription.route";
 import { startCronJobs } from "./cron/index";
+import { lineRoutes } from "./notification/line.route";
+import { startNotificationWorker } from "./notification/notification.worker";
+import prisma from "../libs/db";
 
 const app = new Elysia({ prefix: "/api" })
   .use(
@@ -38,6 +41,7 @@ const app = new Elysia({ prefix: "/api" })
   .use(deviceRoutes)
   .use(reportRoutes)
   .use(subscriptionRoutes)
+  .use(lineRoutes)
   .use(authRoutes)
   .get("/health", () => ({
     status: "ok",
@@ -48,6 +52,7 @@ const app = new Elysia({ prefix: "/api" })
   .listen(3000);
 
 startCronJobs();
+startNotificationWorker(prisma);
 
 export type App = typeof app;
 

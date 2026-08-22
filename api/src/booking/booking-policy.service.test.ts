@@ -31,7 +31,7 @@ function repository(overrides: {
     },
     user: {
       findUnique: async () => overrides.user === undefined
-        ? { id: "user-1", role: "userRole", plan: "FREE", email: "user@example.com", name: "User", lineNotifyToken: null }
+        ? { id: "user-1", role: "userRole", plan: "FREE", email: "user@example.com", name: "User" }
         : overrides.user,
     },
     timeSlot: {

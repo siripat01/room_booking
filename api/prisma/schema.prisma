@@ -39,6 +39,29 @@ enum BookingEventType {
   EXPIRED
 }
 
+enum NotificationChannel {
+  EMAIL
+  LINE
+}
+
+enum NotificationType {
+  BOOKING_APPROVED
+  BOOKING_REJECTED
+  REMINDER_30
+  CHECKIN_REMINDER
+  WAITLIST_PROMOTED
+  TEST
+}
+
+enum NotificationJobStatus {
+  PENDING
+  PROCESSING
+  RETRY
+  SENT
+  FAILED
+  CANCELLED
+}
+
 enum DayOfWeek {
   SUNDAY
   MONDAY
@@ -50,18 +73,21 @@ enum DayOfWeek {
 }
 
 model User {
-  id              String          @id
-  name            String
-  email           String          @unique
-  emailVerified   Boolean         @default(false)
-  image           String?
-  createdAt       DateTime        @default(now()) @db.Timestamptz(3)
-  updatedAt       DateTime        @updatedAt @db.Timestamptz(3)
-  accounts        Account[]
-  sessions        Session[]
-  bookings        Booking[]
-  waitlistEntries WaitlistEntry[]
-  walkInDevice    Device?         @relation("DeviceWalkInPrincipal")
+  id                     String                  @id
+  name                   String
+  email                  String                  @unique
+  emailVerified          Boolean                 @default(false)
+  image                  String?
+  createdAt              DateTime                @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime                @updatedAt @db.Timestamptz(3)
+  accounts               Account[]
+  sessions               Session[]
+  bookings               Booking[]
+  waitlistEntries        WaitlistEntry[]
+  walkInDevice           Device?                 @relation("DeviceWalkInPrincipal")
+  notificationPreference NotificationPreference?
+  notificationJobs       NotificationJob[]
+  lineLinkCodes          LineLinkCode[]
 
   role       String?
   isSystem   Boolean   @default(false) @map("is_system")
@@ -69,10 +95,13 @@ model User {
   banReason  String?
   banExpires DateTime? @db.Timestamptz(3)
 
-  lineNotifyToken  String?   @map("line_notify_token")
-  plan             String    @default("FREE")
-  stripeCustomerId String?   @map("stripe_customer_id")
-  planExpiresAt    DateTime? @map("plan_expires_at") @db.Timestamptz(3)
+  lineUserId            String?   @unique @map("line_user_id")
+  // Rolling-deploy compatibility only. The migration scrubs this value and a
+  // database CHECK constraint prevents obsolete LINE Notify token storage.
+  legacyLineNotifyToken String?   @map("line_notify_token")
+  plan                  String    @default("FREE")
+  stripeCustomerId      String?   @map("stripe_customer_id")
+  planExpiresAt         DateTime? @map("plan_expires_at") @db.Timestamptz(3)
 
   @@map("user")
 }
@@ -217,9 +246,10 @@ model Booking {
   reminder30SentAt      DateTime? @map("reminder_30_sent_at") @db.Timestamptz(3)
   reminderCheckinSentAt DateTime? @map("reminder_checkin_sent_at") @db.Timestamptz(3)
 
-  createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
-  events    BookingEvent[]
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  events           BookingEvent[]
+  notificationJobs NotificationJob[]
 
   // index สำหรับ conflict check query
   @@index([userId])
@@ -251,6 +281,68 @@ model BookingEvent {
   @@index([bookingId, createdAt])
   @@index([roomId, createdAt])
   @@map("booking_events")
+}
+
+// ─────────────────────────────────────────────
+// NOTIFICATIONS
+// ─────────────────────────────────────────────
+
+model NotificationPreference {
+  userId                 String   @id @map("user_id")
+  user                   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emailEnabled           Boolean  @default(true) @map("email_enabled")
+  lineEnabled            Boolean  @default(true) @map("line_enabled")
+  bookingUpdatesEnabled  Boolean  @default(true) @map("booking_updates_enabled")
+  reminder30Enabled      Boolean  @default(true) @map("reminder_30_enabled")
+  checkInReminderEnabled Boolean  @default(true) @map("check_in_reminder_enabled")
+  waitlistEnabled        Boolean  @default(true) @map("waitlist_enabled")
+  createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt              DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("notification_preferences")
+}
+
+model NotificationJob {
+  id                String                @id @default(uuid())
+  userId            String                @map("user_id")
+  user              User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bookingId         String?               @map("booking_id")
+  booking           Booking?              @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  channel           NotificationChannel
+  type              NotificationType
+  status            NotificationJobStatus @default(PENDING)
+  idempotencyKey    String                @unique @map("idempotency_key")
+  payload           Json                  @db.JsonB
+  attempts          Int                   @default(0)
+  maxAttempts       Int                   @default(5) @map("max_attempts")
+  availableAt       DateTime              @default(now()) @map("available_at") @db.Timestamptz(3)
+  lockedAt          DateTime?             @map("locked_at") @db.Timestamptz(3)
+  lockedBy          String?               @map("locked_by")
+  lastError         String?               @map("last_error")
+  providerMessageId String?               @map("provider_message_id")
+  sentAt            DateTime?             @map("sent_at") @db.Timestamptz(3)
+  createdAt         DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([status, availableAt, createdAt])
+  @@index([status, lockedAt])
+  @@index([userId, createdAt])
+  @@index([bookingId, type])
+  @@map("notification_jobs")
+}
+
+model LineLinkCode {
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash   String    @unique @map("code_hash")
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(3)
+  consumedAt DateTime? @map("consumed_at") @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([userId, expiresAt])
+  @@index([expiresAt, consumedAt])
+  @@map("line_link_codes")
 }
 
 // ─────────────────────────────────────────────

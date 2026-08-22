@@ -66,7 +66,7 @@ export class BookingPolicyService {
       }),
       client.user.findUnique({
         where: { id: input.userId },
-        select: { id: true, role: true, plan: true, email: true, name: true, lineNotifyToken: true },
+        select: { id: true, role: true, plan: true, email: true, name: true },
       }),
     ]);
 

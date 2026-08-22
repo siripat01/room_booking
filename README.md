@@ -153,6 +153,37 @@ startTime - 10 minutes <= check-in <= startTime + 12 minutes
 - Walk-ins use a dedicated system principal per kiosk, require requester metadata,
   enter `CHECKED_IN` state atomically, and record correlated `BookingEvent` entries.
 
+## Durable Notifications (Phase 3)
+
+Notification delivery is isolated from booking transactions through a
+PostgreSQL-backed outbox:
+
+- `EmailNotificationProvider` sends through Resend and uses provider idempotency
+  keys.
+- `LineMessagingProvider` uses LINE Messaging API with `X-Line-Retry-Key`; the
+  discontinued LINE Notify API is not used.
+- Users link a LINE identity by sending a random, HMAC-hashed, single-use,
+  ten-minute code to the configured RoomFlow bot. The signed LINE webhook stores
+  only the resulting LINE user ID.
+- User preferences control email, LINE, booking updates, 30-minute reminders,
+  check-in reminders, and waitlist promotion.
+- Jobs have unique idempotency keys, bounded exponential retries, safe error
+  details, and PostgreSQL `FOR UPDATE SKIP LOCKED` claiming across API instances.
+- Provider failures happen after booking commits and cannot roll back a booking.
+- Concurrent reminder scanners may run on multiple instances; database
+  idempotency prevents duplicate jobs.
+- `NODE_ENV=test` or `NOTIFICATIONS_DISABLED=true` suppresses all real provider
+  calls during automated tests.
+
+Required production notification variables are documented in `api/.env.example`:
+`RESEND_API_KEY`, `EMAIL_FROM`, `LINE_CHANNEL_ACCESS_TOKEN`,
+`LINE_CHANNEL_SECRET`, and `LINE_BOT_BASIC_ID`. Configure the LINE Developers
+webhook URL as `https://<api-host>/api/line/webhook`.
+
+For the exact LINE Official Account, LINE Developers Console, Fly secret,
+webhook, manual verification, and credential-rotation steps, see
+[`docs/line-messaging-setup.md`](docs/line-messaging-setup.md).
+
 ## Migration Process
 
 ```bash
@@ -163,6 +194,12 @@ bun run migrate
 ```
 
 The Phase 1 migration performs a preflight check and stops if existing active bookings overlap or contain invalid ranges. It never deletes or rewrites conflicting bookings automatically; resolve reported production data explicitly before retrying. The Phase 2 migration hashes existing QR and device credentials, scrubs legacy plaintext columns while retaining non-secret compatibility placeholders for one rolling deployment, and backfills one walk-in system principal per device. A later cleanup migration can drop the constrained legacy columns after all Phase 2 machines are deployed.
+
+The Phase 3 migration creates preferences, LINE link codes, and notification jobs.
+It scrubs obsolete LINE Notify tokens because they cannot be converted into LINE
+Messaging user IDs. The constrained empty legacy column remains for one rolling
+deployment and can be dropped after every API machine runs Phase 3. Existing users
+must link the RoomFlow LINE bot again after deployment.
 
 ## Tests
 
@@ -175,12 +212,19 @@ TEST_DATABASE_URL=postgresql://user:password@localhost:5432/room_booking_test \
   bun run test:integration
 ```
 
-Automated tests never require notification credentials. Integration tests cover concurrent booking exclusion, QR room binding/expiry/grace/replay, device credential rotation and revocation, pairing single-use behavior, audited walk-ins, and concurrent database rate limiting.
+Automated tests never require notification credentials or contact real providers.
+Integration tests cover concurrent booking exclusion, QR room
+binding/expiry/grace/replay, device credential rotation and revocation, pairing
+single-use behavior, audited walk-ins, concurrent database rate limiting,
+notification idempotency, multi-worker claiming, retries, duplicate reminder
+prevention, and LINE link-code consumption.
 
 ## Known Limitations and Roadmap
 
-- LINE Notify replacement and durable notification jobs are Phase 3.
-- Multi-instance-safe scheduling and the admin audit timeline are Phase 4.
+- Notification outbox cleanup/retention and operational dashboards can be added
+  with the Phase 4 job infrastructure.
+- Multi-instance-safe scheduling for non-notification jobs and the admin audit
+  timeline are Phase 4.
 - Full API/frontend/E2E quality gates are Phase 5.
 - Recurring bookings, SSE room status, and smart alternatives are Phase 6.
 - Smart occupancy remains optional and feature-flagged for a later project.
