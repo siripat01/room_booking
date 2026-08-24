@@ -1,4 +1,5 @@
 import { useTitle } from "../lib/useTitle";
+import { useRealtimeInvalidation } from "../lib/useRealtimeInvalidation";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useState } from "react";
 import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -15,6 +16,7 @@ import {
   XCircle, CheckCircle2, AlertCircle, Timer, MapPin, QrCode, Bell,
 } from "lucide-react";
 import { LoadingCentered } from "../components/LoadingSpinner";
+import { RecurringSeriesList } from "../components/bookings/RecurringSeriesList";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/bookings")({
@@ -54,19 +56,22 @@ const TAB_FILTERS: { label: string; statuses: BookingStatus[] | null }[] = [
   { label: "All",       statuses: null },
 ];
 
-const WAITLIST_TAB = TAB_FILTERS.length; // index 4
+const SERIES_TAB = TAB_FILTERS.length; // index 4
+const WAITLIST_TAB = TAB_FILTERS.length + 1; // index 5
 
 type QRState = { bookingId: string; token: string; expiresAt: string; roomName: string } | null;
 
 function BookingsPage() {
   useTitle("My Bookings");
   const { user } = useCurrentUser();
+  useRealtimeInvalidation({ queryKeys: [["bookings"], ["booking-series"], ["waitlist"]] });
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState(0);
   const [qrState, setQrState] = useState<QRState>(null);
   const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
 
   const isWaitlistTab = activeTab === WAITLIST_TAB;
+  const isSeriesTab = activeTab === SERIES_TAB;
 
   const {
     data,
@@ -76,7 +81,7 @@ function BookingsPage() {
     isLoading: bookingsLoading,
   } = useInfiniteQuery({
     queryKey: ["bookings", "list", activeTab],
-    enabled: !isWaitlistTab,
+    enabled: !isWaitlistTab && !isSeriesTab,
     initialPageParam: 1,
     queryFn: async ({ pageParam }) => {
       const { data, error } = await (app.api.bookings as any).get({
@@ -136,12 +141,12 @@ function BookingsPage() {
     onError: (error) => toast.error(error instanceof Error ? error.message : "Could not generate QR code."),
   });
 
-  const activeStatuses = isWaitlistTab ? null : TAB_FILTERS[activeTab].statuses;
+  const activeStatuses = isWaitlistTab || isSeriesTab ? null : TAB_FILTERS[activeTab].statuses;
   const displayed = activeStatuses
     ? bookings.filter((b) => (activeStatuses as string[]).includes(b.status))
     : bookings;
 
-  const loading = isWaitlistTab ? waitlistLoading : bookingsLoading;
+  const loading = isWaitlistTab ? waitlistLoading : isSeriesTab ? false : bookingsLoading;
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -180,6 +185,18 @@ function BookingsPage() {
               </button>
             );
           })}
+          <button
+            type="button"
+            onClick={() => setActiveTab(SERIES_TAB)}
+            className={`flex-1 min-w-fit px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap flex items-center justify-center gap-1 ${
+              activeTab === SERIES_TAB
+                ? "bg-violet-600 text-white shadow-sm"
+                : "text-muted-foreground hover:text-slate-700"
+            }`}
+          >
+            <CalendarDays className="w-3 h-3" />
+            Recurring
+          </button>
           {/* Waitlist tab — only shown to PRO users */}
           {user?.plan === "PRO" && (
             <button
@@ -206,6 +223,8 @@ function BookingsPage() {
         {/* Content */}
         {loading ? (
           <LoadingCentered />
+        ) : isSeriesTab ? (
+          <RecurringSeriesList plan={user?.plan} />
         ) : isWaitlistTab ? (
           waitlistEntries.length === 0 ? (
             <div className="text-center py-20 text-muted-foreground">

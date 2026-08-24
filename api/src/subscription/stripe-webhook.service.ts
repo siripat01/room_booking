@@ -1,5 +1,6 @@
 import Stripe from "stripe";
 import { Prisma, type PrismaClient } from "../../generated/prisma/client";
+import { RecurringEntitlementService } from "./recurring-entitlement.service";
 
 type StripeSubscription = Stripe.Subscription & { current_period_end?: number };
 
@@ -19,7 +20,11 @@ function isDuplicateEvent(error: unknown) {
 }
 
 export class StripeWebhookService {
-  constructor(private readonly prisma: PrismaClient) {}
+  private readonly recurringEntitlements: RecurringEntitlementService;
+
+  constructor(private readonly prisma: PrismaClient) {
+    this.recurringEntitlements = new RecurringEntitlementService(prisma);
+  }
 
   async process(event: Stripe.Event) {
     try {
@@ -45,6 +50,9 @@ export class StripeWebhookService {
             if (!customerId) return false;
             const active = subscription.status === "active" || subscription.status === "trialing";
             const expiresAt = periodEnd(subscription);
+            if (active && subscription.cancel_at_period_end && !expiresAt) {
+              throw new Error("Stripe subscription cancellation is missing current_period_end");
+            }
             await tx.user.updateMany({
               where: { stripeCustomerId: customerId },
               data: {
@@ -52,6 +60,14 @@ export class StripeWebhookService {
                 planExpiresAt: active && !subscription.cancel_at_period_end ? null : expiresAt,
               },
             });
+            if (!active) {
+              await this.recurringEntitlements.cancelForStripeCustomer(
+                tx,
+                customerId,
+                new Date(event.created * 1000),
+                "stripe-subscription-inactive",
+              );
+            }
             return true;
           }
           case "customer.subscription.deleted": {
@@ -62,6 +78,12 @@ export class StripeWebhookService {
               where: { stripeCustomerId: customerId },
               data: { plan: "FREE", planExpiresAt: null },
             });
+            await this.recurringEntitlements.cancelForStripeCustomer(
+              tx,
+              customerId,
+              new Date(event.created * 1000),
+              "stripe-subscription-deleted",
+            );
             return true;
           }
           default:

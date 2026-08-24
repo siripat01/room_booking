@@ -3,6 +3,7 @@ import { isExclusionConstraintError, withSerializableRetry } from "../lib/transa
 import { bangkokDayBounds, getBangkokDateTime } from "../lib/bangkok-time";
 import { BookingPolicyError } from "./booking.errors";
 import { BookingPolicyService } from "./booking-policy.service";
+import { BookingAlternativeService } from "./booking-alternative.service";
 import {
   CHECK_IN_LATE_MINUTES,
   CheckInPolicyService,
@@ -62,13 +63,16 @@ function withoutQrTokenHash<T extends { qrTokenHash: string | null }>(booking: T
 
 export class BookingService {
   private readonly audit = new AuditService();
+  private readonly alternatives: BookingAlternativeService;
 
   constructor(
     private readonly prisma: PrismaClient,
     private readonly policy = new BookingPolicyService(),
     private readonly checkInPolicy: CheckInPolicyService = new CheckInPolicyService(),
     private readonly notifications = new NotificationService(prisma),
-  ) {}
+  ) {
+    this.alternatives = new BookingAlternativeService(policy);
+  }
 
   async createBooking(data: CreateBookingData) {
     try {
@@ -113,13 +117,26 @@ export class BookingService {
       }
       return withoutQrTokenHash(booking);
     } catch (error) {
-      if (isExclusionConstraintError(error)) {
-        throw new BookingPolicyError(
+      const conflict = isExclusionConstraintError(error)
+        ? new BookingPolicyError(
           "CONCURRENT_BOOKING_CONFLICT",
           "Room or user already has an overlapping active booking",
-        );
+        )
+        : error;
+      if (
+        conflict instanceof BookingPolicyError &&
+        ["ROOM_OVERLAP", "USER_OVERLAP", "CONCURRENT_BOOKING_CONFLICT"].includes(conflict.code)
+      ) {
+        try {
+          conflict.alternatives = await this.prisma.$transaction((tx) =>
+            this.alternatives.suggest(tx, data),
+          );
+        } catch {
+          // Suggestions are best-effort and must never replace the original,
+          // actionable booking conflict.
+        }
       }
-      throw error;
+      throw conflict;
     }
   }
 

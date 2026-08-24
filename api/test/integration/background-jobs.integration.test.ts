@@ -87,7 +87,7 @@ integrationTest("concurrent schedulers and SKIP LOCKED workers execute each sche
     where: { scheduledFor: new Date("2099-01-02T03:07:00.000Z") },
   });
   trackedJobIds.push(...jobs.map(({ id }) => id));
-  expect(jobs).toHaveLength(4);
+  expect(jobs).toHaveLength(5);
 
   const executions = new Map<BackgroundJobType, number>();
   const handler = (type: BackgroundJobType) => async () => {
@@ -104,11 +104,11 @@ integrationTest("concurrent schedulers and SKIP LOCKED workers execute each sche
   ];
   await Promise.all(workers.map((worker) => worker.runOnce(10, now)));
 
-  expect([...executions.values()].reduce((total, count) => total + count, 0)).toBe(4);
+  expect([...executions.values()].reduce((total, count) => total + count, 0)).toBe(5);
   expect([...executions.values()].every((count) => count === 1)).toBe(true);
   expect(await prisma.backgroundJob.count({
     where: { id: { in: trackedJobIds }, status: "COMPLETED" },
-  })).toBe(4);
+  })).toBe(5);
 });
 
 integrationTest("failed jobs persist retry state and complete on a later attempt", async () => {

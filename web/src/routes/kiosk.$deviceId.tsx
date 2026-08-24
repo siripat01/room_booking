@@ -223,6 +223,56 @@ function KioskPage() {
     return () => clearInterval(t);
   }, [deviceKey, fetchData]);
 
+  // SSE is the fast path. The 30-second refresh above remains the polling
+  // fallback if a proxy or network interrupts streaming.
+  useEffect(() => {
+    if (!deviceKey) return;
+    const controller = new AbortController();
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+    let reconnectDelay = 1_000;
+
+    const connect = async () => {
+      if (controller.signal.aborted) return;
+      try {
+        const response = await kioskFetch(`/devices/${deviceId}/events`, deviceKey, {
+          signal: controller.signal,
+        });
+        if (!response.ok || !response.body) throw new Error("SSE unavailable");
+        reconnectDelay = 1_000;
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        while (!controller.signal.aborted) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const frames = buffer.split("\n\n");
+          buffer = frames.pop() ?? "";
+          for (const frame of frames) {
+            const data = frame.split("\n").find((line) => line.startsWith("data: "))?.slice(6);
+            if (!data) continue;
+            const event = JSON.parse(data) as { type?: string };
+            if (event.type && !["connected", "stream.degraded"].includes(event.type)) {
+              void fetchData();
+            }
+          }
+        }
+      } catch {
+        // The periodic refresh stays active while the stream reconnects.
+      }
+      if (!controller.signal.aborted) {
+        reconnectTimer = setTimeout(() => void connect(), reconnectDelay);
+        reconnectDelay = Math.min(reconnectDelay * 2, 30_000);
+      }
+    };
+
+    void connect();
+    return () => {
+      controller.abort();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+    };
+  }, [deviceId, deviceKey, fetchData]);
+
   // Heartbeat
   useEffect(() => {
     if (!deviceKey) return;

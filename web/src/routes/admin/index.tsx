@@ -17,6 +17,7 @@ import {
   Loader2, Timer, ArrowRight, TrendingUp,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useRealtimeInvalidation } from "../../lib/useRealtimeInvalidation";
 import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis,
   Tooltip, ResponsiveContainer, CartesianGrid,
@@ -55,6 +56,7 @@ const STAT_CARDS = [
 ] as const;
 
 function AdminDashboard() {
+  useRealtimeInvalidation({ queryKeys: [["admin"], ["reports"], ["rooms"]] });
   const qc = useQueryClient();
   const { data: stats } = useQuery(adminStatsQuery());
   const { data: bookingsData } = useQuery(adminBookingsQuery({ status: "PENDING" }));

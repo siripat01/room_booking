@@ -17,6 +17,7 @@ import { RotateKeyConfirmModal } from "../../components/devices/RotateKeyConfirm
 import { DeleteConfirmModal } from "../../components/devices/DeleteConfirmModal";
 import { getDeviceStatus, formatRelativeTime, getStatusBadgeVariant } from "../../lib/device-utils";
 import type { Device, Room } from "../../types/device";
+import { useRealtimeInvalidation } from "../../lib/useRealtimeInvalidation";
 
 export const Route = createFileRoute("/admin/devices")({
   loader: ({ context: { queryClient } }) => {
@@ -39,6 +40,7 @@ function computeStats(devices: AdminDevice[]) {
 }
 
 function AdminDevicesPage() {
+  useRealtimeInvalidation({ queryKeys: [["admin", "devices"], ["rooms"]] });
   const qc = useQueryClient();
 
   const [formOpen, setFormOpen] = useState(false);

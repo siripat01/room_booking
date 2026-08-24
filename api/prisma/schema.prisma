@@ -64,6 +64,7 @@ enum NotificationJobStatus {
 
 enum BackgroundJobType {
   EXPIRE_BOOKINGS
+  EXPIRE_PRO_ACCESS
   AUTO_CHECKOUT
   ENQUEUE_REMINDERS
   PROMOTE_WAITLIST
@@ -80,10 +81,16 @@ enum BackgroundJobStatus {
 
 enum AuditTargetType {
   BOOKING
+  BOOKING_SERIES
   DEVICE
   ROOM
   JOB
   WAITLIST
+}
+
+enum BookingSeriesStatus {
+  ACTIVE
+  CANCELLED
 }
 
 enum DayOfWeek {
@@ -107,6 +114,7 @@ model User {
   accounts               Account[]
   sessions               Session[]
   bookings               Booking[]
+  bookingSeries          BookingSeries[]
   waitlistEntries        WaitlistEntry[]
   walkInDevice           Device?                 @relation("DeviceWalkInPrincipal")
   notificationPreference NotificationPreference?
@@ -127,6 +135,8 @@ model User {
   stripeCustomerId      String?   @map("stripe_customer_id")
   planExpiresAt         DateTime? @map("plan_expires_at") @db.Timestamptz(3)
 
+  @@index([plan, planExpiresAt])
+  @@index([stripeCustomerId])
   @@map("user")
 }
 
@@ -199,12 +209,14 @@ model Room {
   // images        RoomImage[]
   timeSlots       TimeSlot[]
   bookings        Booking[]
+  bookingSeries   BookingSeries[]
   waitlistEntries WaitlistEntry[]
   device          Device?
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
+  @@index([amenities], type: Gin)
   @@map("rooms")
 }
 
@@ -229,6 +241,34 @@ model TimeSlot {
 // BOOKING
 // ─────────────────────────────────────────────
 
+model BookingSeries {
+  id String @id @default(uuid())
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
+  roomId String @map("room_id")
+  room   Room   @relation(fields: [roomId], references: [id], onDelete: Restrict)
+
+  startDate DateTime    @map("start_date") @db.Date
+  endDate   DateTime    @map("end_date") @db.Date
+  weekdays  DayOfWeek[]
+  startTime String      @map("start_time")
+  endTime   String      @map("end_time")
+  attendees Int
+  purpose   String?
+  status    BookingSeriesStatus @default(ACTIVE)
+
+  cancelledAt DateTime? @map("cancelled_at") @db.Timestamptz(3)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  bookings    Booking[]
+
+  @@index([userId, status, startDate])
+  @@index([userId, createdAt])
+  @@index([roomId, status, startDate])
+  @@map("booking_series")
+}
+
 model Booking {
   id String @id @default(uuid())
 
@@ -237,6 +277,11 @@ model Booking {
   user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
   roomId String @map("room_id")
   room   Room   @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  seriesId         String?        @map("series_id")
+  series           BookingSeries? @relation(fields: [seriesId], references: [id], onDelete: Restrict)
+  occurrenceDate   DateTime?      @map("occurrence_date") @db.Date
+  isSeriesException Boolean       @default(false) @map("is_series_exception")
 
   // Booking details
   startTime DateTime      @map("start_time") @db.Timestamptz(3)
@@ -283,6 +328,8 @@ model Booking {
   @@index([roomId, startTime, endTime, status])
   @@index([status, startTime])
   @@index([status, endTime])
+  @@unique([seriesId, occurrenceDate])
+  @@index([seriesId, startTime])
   @@map("bookings")
 }
 
@@ -329,6 +376,7 @@ model AuditLog {
   @@index([deviceId, createdAt])
   @@index([roomId, createdAt])
   @@index([actorType, actorId, createdAt])
+  @@index([createdAt, id])
   @@map("audit_logs")
 }
 

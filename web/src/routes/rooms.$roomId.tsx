@@ -1,6 +1,7 @@
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
 import { useState, useEffect, useMemo } from "react";
 import { useTitle } from "../lib/useTitle";
+import { useRealtimeInvalidation } from "../lib/useRealtimeInvalidation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCurrentUser } from "../lib/useCurrentUser";
 import { roomQuery, roomAvailabilityQuery, sessionQuery, waitlistQuery } from "../lib/queries";
@@ -19,6 +20,7 @@ import {
   CalendarDays, Clock, CheckCircle2, Timer, Loader2, MapPin, ChevronLeft, ChevronRight, Bell,
 } from "lucide-react";
 import { LoadingCentered } from "../components/LoadingSpinner";
+import { RecurringBookingDialog } from "../components/bookings/RecurringBookingDialog";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/rooms/$roomId")({
@@ -76,10 +78,12 @@ function RoomDetailPage() {
   const { user } = useCurrentUser();
   const qc = useQueryClient();
   const { data: room, isLoading: roomLoading } = useQuery(roomQuery(roomId));
+  useRealtimeInvalidation({ roomId, queryKeys: [["rooms", roomId], ["bookings"]] });
   const [booking, setBooking] = useState<BookingResult | null>(null);
   const [conflictAlts, setConflictAlts] = useState<{ startTime: string; endTime: string }[]>([]);
   const [waitlisted, setWaitlisted] = useState(false);
   const [conflictSlot, setConflictSlot] = useState<{ startTime: string; endTime: string } | null>(null);
+  const [recurringOpen, setRecurringOpen] = useState(false);
 
   const today = new Date().toLocaleDateString("en-CA");
   const [form, setForm] = useState({
@@ -476,6 +480,23 @@ function RoomDetailPage() {
                       {bookMutation.isPending ? "Submitting…" : autoConfirm ? "Book Now" : "Request Booking"}
                     </Button>
 
+                    {user?.plan === "PRO" ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full border-violet-200 text-violet-700 hover:bg-violet-50"
+                        disabled={!form.slot || !form.purpose.trim() || Number(form.attendees) < 1}
+                        onClick={() => setRecurringOpen(true)}
+                      >
+                        <CalendarDays className="w-4 h-4 mr-2" />
+                        Book weekly recurring (Pro)
+                      </Button>
+                    ) : (
+                      <div className="rounded-lg border border-violet-100 bg-violet-50 p-3 text-center text-xs text-violet-700">
+                        Weekly recurring booking is available on Pro.
+                      </div>
+                    )}
+
                     {conflictAlts.length > 0 && (
                       <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-2">
                         <p className="text-xs font-medium text-amber-700">ช่วงเวลานี้ถูกจองแล้ว ลองช่วงเวลาอื่น:</p>
@@ -526,6 +547,18 @@ function RoomDetailPage() {
                 )}
               </CardContent>
             </Card>
+            {form.slot && (
+              <RecurringBookingDialog
+                open={recurringOpen}
+                onOpenChange={setRecurringOpen}
+                roomId={roomId}
+                startDate={form.date}
+                startTime={form.slot}
+                endTime={SLOTS.find((slot) => slot.start === form.slot)?.end ?? form.slot}
+                attendees={Number(form.attendees)}
+                purpose={form.purpose}
+              />
+            )}
           </div>
         </div>
       </main>

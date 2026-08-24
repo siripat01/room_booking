@@ -107,8 +107,11 @@ Every implemented booking creation path uses `BookingPolicyService`:
 - Authenticated user and admin bookings
 - Kiosk walk-in bookings
 - Waitlist promotion
+- Every occurrence created or edited through `BookingSeriesService`
 
-Recurring bookings are not implemented yet. When added, each occurrence must call the same policy service.
+Weekly recurring bookings use the same policy and serializable transaction as
+single bookings. A series is created atomically only when every occurrence is
+valid; PostgreSQL exclusion constraints remain the final overlap guarantee.
 
 The server enforces:
 
@@ -259,6 +262,59 @@ The Phase 5 migration creates `stripe_webhook_events`. The Stripe event ID is th
 primary key and is inserted in the same transaction as local plan changes, making
 concurrent webhook retries idempotent for RoomFlow database side effects.
 
+The Phase 6 migration creates `booking_series`, links occurrences through
+`series_id` and a Bangkok `occurrence_date`, and adds the durable
+`EXPIRE_PRO_ACCESS` job type. The migration contains reviewed PostgreSQL checks
+for valid dates, times, weekdays, attendee counts, and one occurrence per date.
+
+## High-Value Features (Phase 6)
+
+### Weekly recurring bookings
+
+`BookingSeriesService` supports conflict preview, atomic weekly creation, editing
+one occurrence, editing this and future occurrences through a series split,
+editing the whole future series, and cancelling one/future/all occurrences. Past
+or terminal occurrences remain immutable. Conflict responses list every affected
+date and deterministic alternatives.
+
+Recurring creation and edits require an active individual Pro plan. Free users
+can still list and cancel historical series. When Stripe sets
+`cancel_at_period_end`, Pro access and recurring controls remain active until
+`planExpiresAt`. The PostgreSQL-backed `EXPIRE_PRO_ACCESS` job downgrades the user
+and cancels active series plus future `PENDING`/`CONFIRMED` occurrences only when
+that timestamp is reached. An immediately inactive/deleted Stripe subscription
+performs the same cancellation inside the idempotent webhook transaction.
+
+Settings: `BOOKING_SERIES_MAX_OCCURRENCES` (default 26) and
+`BOOKING_SERIES_MAX_SPAN_DAYS` (default 366).
+
+### Real-time room status
+
+Authenticated pages consume `GET /api/realtime/events`; paired kiosks consume
+`GET /api/devices/:deviceId/events` with the normal `X-Device-Key` header. Both
+are Server-Sent Event streams backed by the append-only PostgreSQL audit history,
+so separate API instances observe the same booking, check-in, room closure, room
+status, and device lifecycle changes without a broker. Device online/offline
+events are derived from heartbeat freshness. Stream payloads intentionally omit
+audit metadata, user details, credentials, and tokens.
+
+Clients reconnect with exponential backoff. User/admin pages invalidate TanStack
+Query caches on safe events and fall back to backoff polling when streaming is
+degraded. Kiosks keep their existing 30-second schedule polling as a fallback.
+`REALTIME_POLL_INTERVAL_MS` controls the database-backed stream interval and
+defaults to two seconds.
+
+### Smart alternatives
+
+Single and recurring conflicts use `BookingAlternativeService`. Candidates are
+validated by `BookingPolicyService` and ranked deterministically:
+
+1. The same room at nearby times.
+2. Another active room at the same time with sufficient capacity and all requested-room amenities.
+3. The closest valid room-and-time combination.
+
+The response explains each rank and never uses AI to choose room availability.
+
 ## Automated Quality and Operations (Phase 5)
 
 Both packages use Biome for linting and formatting. Correctness violations block
@@ -310,6 +366,9 @@ background-job retry and retention, booking ownership/timeline RBAC, and schedul
 waitlist promotion with correlated audit. Phase 5 adds HTTP route-level ownership
 tests, concurrent Stripe webhook idempotency tests, job-health unit tests, and
 frontend booking-timeline and destructive-confirmation component tests.
+Phase 6 adds Pro entitlement/expiry cancellation, recurring atomicity and edit
+scope tests, deterministic alternative ranking, Stripe end-of-period behavior,
+and safe database-backed SSE delivery.
 
 ## Known Limitations and Roadmap
 
@@ -321,5 +380,5 @@ frontend booking-timeline and destructive-confirmation component tests.
 - The full Playwright booking-to-completion E2E remains optional; unit,
   PostgreSQL integration, component, lint, type-check, migration, build, and
   Docker gates are implemented.
-- Recurring bookings, SSE room status, and smart alternatives are Phase 6.
+- Phase 6 recurring bookings, SSE room status, and smart alternatives are implemented.
 - Smart occupancy remains optional and feature-flagged for a later project.
