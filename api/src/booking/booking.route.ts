@@ -11,6 +11,12 @@ const bookingService = new BookingService(prisma);
 const bookingRoutes = new Elysia({ prefix: "/bookings" })
     .use(betterAuth)
     .onError(({ error, status }) => {
+        if (error instanceof Error && error.message === "Unauthorized") {
+            return status(403, { error: "Forbidden" });
+        }
+        if (error instanceof Error && error.message === "Booking not found") {
+            return status(404, { error: error.message });
+        }
         if (!isBookingPolicyError(error)) return;
         const conflict = [
             "ROOM_OVERLAP",

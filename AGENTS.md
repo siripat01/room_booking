@@ -37,7 +37,8 @@ requirement.
   checkout, reminders, waitlist promotion, and completed-job retention.
 - `api/src/audit/`: append-only cross-domain audit records.
 - `api/prisma/`: schema and reviewed migrations, including raw PostgreSQL SQL.
-- `api/test/`: PostgreSQL integration and concurrency tests.
+- `api/test/unit/`: database-independent Bun unit tests grouped by domain.
+- `api/test/integration/`: PostgreSQL integration, concurrency, and HTTP RBAC tests.
 - `web/`: React, Vite, TanStack Router/Query, Tailwind CSS.
 - `.github/workflows/main.yml`: current CI workflow.
 - `README.md`: user-facing scope, setup, implemented behavior, and roadmap.
@@ -114,10 +115,9 @@ The Phase 2 migration intentionally retains scrubbed legacy credential columns
 for rolling-deploy compatibility. Add a later cleanup migration only after every
 deployed API instance uses the new hashed columns.
 
-### Phase 3: Notification Replacement — Implemented, validated, and locally merged
+### Phase 3: Notification Replacement — Implemented and merged
 
-Commit `19fe423c` was fast-forwarded into local `main`. Remote `main` still needs
-an explicitly authorized push.
+Phase 3 was merged into remote `main` through PR #79 at merge commit `4f4079bb`.
 
 - `EmailNotificationProvider` and `LineMessagingProvider` implement one provider
   abstraction; `WebPushProvider` remains an optional future extension.
@@ -142,9 +142,10 @@ LINE Notify tokens because they cannot be converted to Messaging API user IDs.
 The constrained empty legacy column remains for one rolling deployment and should
 be dropped only after all API machines run Phase 3. Users must link the bot again.
 
-### Phase 4: Safe Jobs and Auditability — Implemented and locally validated
+### Phase 4: Safe Jobs and Auditability — Implemented and merged
 
-Implementation is on `agent/safe-jobs-audit-phase4` and is not committed.
+Implementation commit `100bdad6` was merged into remote `main` through PR #80 at
+merge commit `ad49a4db`.
 
 - Time-bucketed job keys make scheduler wakeups idempotent across API instances.
 - Workers claim persisted jobs with `FOR UPDATE SKIP LOCKED`, bounded exponential
@@ -164,37 +165,45 @@ Implementation is on `agent/safe-jobs-audit-phase4` and is not committed.
 
 Migration: `20260822000000_safe_jobs_and_audit_phase4`.
 
-### Phase 5: Automated Quality — Partially implemented
+### Phase 5: Automated Quality — Core scope implemented and locally validated
 
-Existing coverage includes booking policy, check-in policy, notification template,
-LINE signature/link hashing unit tests, PostgreSQL booking-concurrency tests,
-Phase 2 device-security tests, and Phase 3 notification worker/idempotency/retry
-integration tests. This does not yet satisfy the full phase.
+Implementation is on `agent/automated-quality-phase5`, based on the Phase 4
+commit.
 
-Implemented on the uncommitted Phase 4 branch:
+- Backend CI uses pinned PostgreSQL 17.6, applies all migrations to an empty
+  database, validates migration status, and runs unit, integration, lint, and
+  type-check gates with real notification delivery disabled.
+- Frontend CI runs Biome lint, Vitest component tests, TypeScript, and the Vite
+  production build. Cache keys match `api/bun.lock` and `web/pnpm-lock.yaml`.
+- API Docker Buildx validation gates Fly deployment. Bun 1.3.14, PostgreSQL 17.6,
+  Fly CLI 0.4.76, Vercel CLI 59.1.4, Elysia 1.4.28, and TypeScript 6.0.3 remain
+  pinned in critical paths.
+- Backend PostgreSQL tests cover booking concurrency, booking ownership and
+  route-level RBAC, QR/device security, waitlist promotion, duplicate reminders,
+  background-job claiming/retry/retention, and Stripe webhook idempotency.
+- Frontend component tests cover booking-timeline loading/error/empty/content
+  states and the exact-name destructive kiosk confirmation.
+- A `stripe_webhook_events` ledger records each provider event in the same
+  transaction as plan changes, so concurrent Stripe retries do not repeat local
+  side effects.
+- `GET /api/health` performs database readiness and returns a professional
+  service/version/timestamp response with HTTP 503 when the database is down.
+- Admin-only `GET /api/operations/jobs/health` reports queue counts, oldest due
+  age, failed-job thresholds, and stale locks across background and notification
+  jobs. Degraded snapshots also produce periodic structured warnings.
+- Biome provides explicit `lint` and `format` commands for both
+  packages. Existing legacy unused/a11y diagnostics remain warnings while
+  correctness failures block CI.
 
-- Backend CI uses a pinned PostgreSQL 17.6 service and applies all migrations to
-  an empty database before running unit and integration tests.
-- CI cache keys now match `api/bun.lock` and `web/pnpm-lock.yaml`.
-- API Docker Buildx validation gates Fly deployment.
-- Bun 1.3.14, PostgreSQL 17.6, Fly CLI 0.4.76, Vercel CLI 59.1.4,
-  Elysia 1.4.28, and TypeScript 6.0.3 are pinned in critical paths.
-- Booking ownership/list isolation and timeline service-boundary RBAC have real
-  PostgreSQL integration tests.
-- Worker loops drain in-flight work on graceful shutdown, terminal notification
-  jobs have configurable retention, and audit metadata is sanitized centrally.
+Optional remaining quality work:
 
-Still required:
+- Playwright E2E for the full booking-to-completion flow below. It remains
+  optional because it needs deterministic Better Auth, Stripe-independent test
+  users, and a paired kiosk fixture.
+- Broader frontend component coverage and an external metrics/alert sink. The
+  current operational endpoint and structured logs expose the required signals.
 
-- Remaining API tests for route-level RBAC, Stripe webhook idempotency, and other
-  uncovered ownership mutations.
-- Frontend component tests for critical states.
-- Optional Playwright E2E for the primary booking-to-completion flow.
-- Lint and format commands.
-- CI lint/format and frontend component-test gates.
-- Cross-job health metrics and alerting.
-
-Required E2E flow:
+Target E2E flow:
 
 ```text
 User signs in
@@ -234,10 +243,10 @@ no-show and cancellation rates, approval latency, average duration, capacity
 utilization, actual versus reserved use, device uptime, Bangkok peak hours, and
 room/floor/date-range breakdowns.
 
-The README has Phase 1/2 and setup notes, but still needs the complete architecture
-diagram, full environment reference, detailed QR/device flows, CI/CD explanation,
-demo and screenshot placeholders, trade-offs, limitations, and an accurate
-implemented-versus-roadmap inventory. Never claim unimplemented features as done.
+The README documents Phases 1-5 and setup notes, but still needs the complete
+architecture diagram, full environment reference, demo and screenshot
+placeholders, and expanded trade-offs. Never claim unimplemented features as
+done.
 
 ## Development and Validation
 
@@ -250,11 +259,15 @@ cd api
 bun install --frozen-lockfile
 bun run prisma generate
 bun run migrate
-bun test
+bun run test:unit
+bun run lint
 
 # PostgreSQL integration tests: use a dedicated disposable database
 TEST_DATABASE_URL=postgresql://user:password@localhost:5432/room_booking_test \
   bun run test:integration
+
+# Run both unit and integration directories (integration tests skip without TEST_DATABASE_URL)
+bun test
 
 # API type-check
 bun run typecheck
@@ -262,6 +275,8 @@ bun run typecheck
 # Web
 cd ../web
 pnpm install --frozen-lockfile
+pnpm run lint
+pnpm test
 pnpm exec tsc --noEmit
 pnpm run build
 ```
@@ -323,6 +338,16 @@ During the Phase 5 risk-hardening continuation on 2026-08-22:
   >500 kB main-chunk warning remains.
 - The production API Docker image built successfully from pinned Bun 1.3.14.
 
+During Phase 5 completion validation on 2026-08-24:
+
+- All 15 migrations applied successfully to an empty PostgreSQL 17.6 database;
+  migration status reported the schema up to date.
+- API unit tests passed 37/37. The PostgreSQL run passed 58/58 tests, including
+  concurrent Stripe webhook deduplication and HTTP route-level RBAC.
+- Frontend Vitest component tests passed 3/3. API/web type-checks, Biome lint,
+  the frontend production build, and the production API Docker build passed.
+- The frontend build retains the known 511 kB main-chunk warning.
+
 Re-run the relevant checks instead of relying only on this historical result.
 
 ## Working Rules for Future Sessions
@@ -346,10 +371,9 @@ user-owned unless the user explicitly places them in scope.
 
 ## Recommended Next Session
 
-1. Review and commit the combined Phase 4 and Phase 5 hardening without staging the unrelated top-level
-   `package.json` and `bun.lock` files.
-2. Push local `main` and the working branch only with explicit authorization.
-3. Add lint/format, frontend component tests, Stripe webhook idempotency tests,
-   and a cross-job operational health view.
+1. Review and merge `agent/automated-quality-phase5` after its CI gates pass.
+2. Merge the room-time-slot hotfix before production validation so existing rooms
+   receive the backfilled weekday schedule.
+3. Start Phase 6 only after the required Phase 5 gates remain green on `main`.
 4. Configure a test LINE Messaging channel and signed webhook only for manual
    staging verification; never use real provider credentials in automated tests.

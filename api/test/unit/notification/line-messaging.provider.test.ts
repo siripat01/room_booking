@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { LineMessagingProvider } from "./line-messaging.provider";
+import { LineMessagingProvider } from "../../../src/notification/line-messaging.provider";
 
 const message = {
   recipient: `U${"a".repeat(32)}`,

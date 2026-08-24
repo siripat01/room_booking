@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "../generated/prisma/client";
-import { BookingService } from "../src/booking/booking.service";
-import { getBangkokDateTime } from "../src/lib/bangkok-time";
+import { PrismaClient } from "../../generated/prisma/client";
+import { BookingService } from "../../src/booking/booking.service";
+import { getBangkokDateTime } from "../../src/lib/bangkok-time";
 
 const connectionString = process.env.TEST_DATABASE_URL;
 const integrationTest = connectionString ? test : test.skip;

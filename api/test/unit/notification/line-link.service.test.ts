@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { hashLineLinkCode } from "./line-link.service";
+import { hashLineLinkCode } from "../../../src/notification/line-link.service";
 
 describe("LINE link code hashing", () => {
   test("normalizes the code and separates it from plaintext storage", () => {

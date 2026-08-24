@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { startPollingLoop } from "./polling-loop";
+import { startPollingLoop } from "../../../src/lib/polling-loop";
 
 test("polling loop prevents overlapping runs and waits for in-flight work on stop", async () => {
   let runs = 0;

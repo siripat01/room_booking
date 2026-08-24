@@ -1,15 +1,15 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "../generated/prisma/client";
-import { LineLinkService } from "../src/notification/line-link.service";
-import { NotificationScheduler } from "../src/notification/notification.scheduler";
-import { NotificationService } from "../src/notification/notification.service";
+import { PrismaClient } from "../../generated/prisma/client";
+import { LineLinkService } from "../../src/notification/line-link.service";
+import { NotificationScheduler } from "../../src/notification/notification.scheduler";
+import { NotificationService } from "../../src/notification/notification.service";
 import {
   NotificationDeliveryError,
   type NotificationMessage,
   type NotificationProvider,
-} from "../src/notification/notification.types";
-import { NotificationWorker } from "../src/notification/notification.worker";
+} from "../../src/notification/notification.types";
+import { NotificationWorker } from "../../src/notification/notification.worker";
 
 const connectionString = process.env.TEST_DATABASE_URL;
 const integrationTest = connectionString ? test : test.skip;

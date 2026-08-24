@@ -11,6 +11,8 @@ import { deviceRoutes } from "./device/device.route";
 import reportRoutes from "./report/report.route";
 import { subscriptionRoutes } from "./subscription/subscription.route";
 import { startBackgroundJobs } from "./jobs";
+import { jobHealthRoutes } from "./jobs/job-health.route";
+import { JobHealthService } from "./jobs/job-health.service";
 import { lineRoutes } from "./notification/line.route";
 import { startNotificationWorker } from "./notification/notification.worker";
 import prisma from "../libs/db";
@@ -42,12 +44,17 @@ const app = new Elysia({ prefix: "/api" })
   .use(reportRoutes)
   .use(subscriptionRoutes)
   .use(lineRoutes)
+  .use(jobHealthRoutes)
   .use(authRoutes)
-  .get("/health", () => ({
-    status: "ok",
-    service: "roomflow-api",
-    timestamp: new Date().toISOString(),
-  }))
+  .get("/health", async ({ status }) => {
+    const health = await new JobHealthService(prisma).readiness();
+    return status(health.status === "healthy" ? 200 : 503, {
+      ...health,
+      service: "roomflow-api",
+      version: process.env.APP_VERSION ?? "development",
+      timestamp: new Date().toISOString(),
+    });
+  })
   .all("/version", () => process.env.APP_VERSION)
   .listen(3000);
 

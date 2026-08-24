@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { BookingPolicyService, type BookingPolicyConfig } from "./booking-policy.service";
+import { BookingPolicyService, type BookingPolicyConfig } from "../../../src/booking/booking-policy.service";
 
 const NOW = new Date("2026-08-19T00:00:00.000Z");
 const START = new Date("2026-08-19T03:00:00.000Z"); // 10:00 Asia/Bangkok

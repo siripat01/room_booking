@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { renderNotification } from "./notification-template";
+import { renderNotification } from "../../../src/notification/notification-template";
 
 describe("notification templates", () => {
   test("renders booking instants in Asia/Bangkok and escapes HTML", () => {

@@ -357,6 +357,16 @@ model BackgroundJob {
   @@map("background_jobs")
 }
 
+model StripeWebhookEvent {
+  id          String   @id @map("event_id")
+  type        String
+  processedAt DateTime @default(now()) @map("processed_at") @db.Timestamptz(3)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([createdAt])
+  @@map("stripe_webhook_events")
+}
+
 // ─────────────────────────────────────────────
 // NOTIFICATIONS
 // ─────────────────────────────────────────────
