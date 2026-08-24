@@ -1,6 +1,7 @@
 import type { BackgroundJobType, PrismaClient } from "../../generated/prisma/client";
 import { BookingService } from "../booking/booking.service";
 import { NotificationScheduler } from "../notification/notification.scheduler";
+import { RecurringEntitlementService } from "../subscription/recurring-entitlement.service";
 
 const DEFAULT_COMPLETED_JOB_RETENTION_DAYS = 30;
 const DEFAULT_NOTIFICATION_JOB_RETENTION_DAYS = 90;
@@ -26,10 +27,12 @@ export type BackgroundJobHandler = (jobId: string, now: Date) => Promise<Backgro
 export class BackgroundJobHandlers {
   private readonly bookings: BookingService;
   private readonly notifications: NotificationScheduler;
+  private readonly recurringEntitlements: RecurringEntitlementService;
 
   constructor(private readonly prisma: PrismaClient) {
     this.bookings = new BookingService(prisma);
     this.notifications = new NotificationScheduler(prisma);
+    this.recurringEntitlements = new RecurringEntitlementService(prisma);
   }
 
   for(type: BackgroundJobType): BackgroundJobHandler {
@@ -38,6 +41,8 @@ export class BackgroundJobHandlers {
         return async (jobId, now) => ({
           expired: await this.bookings.expireDueBookings(now, this.systemActor(jobId, type)),
         });
+      case "EXPIRE_PRO_ACCESS":
+        return async (_jobId, now) => this.recurringEntitlements.expireDueProAccess(now);
       case "AUTO_CHECKOUT":
         return async (jobId, now) => ({
           completed: await this.bookings.completeDueBookings(now, this.systemActor(jobId, type)),

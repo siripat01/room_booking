@@ -17,6 +17,8 @@ export type BookingPolicyErrorCode =
   | "CONCURRENT_BOOKING_CONFLICT";
 
 export class BookingPolicyError extends Error {
+  public alternatives: BookingAlternative[] = [];
+
   constructor(
     public readonly code: BookingPolicyErrorCode,
     message: string,
@@ -30,3 +32,4 @@ export class BookingPolicyError extends Error {
 export function isBookingPolicyError(error: unknown): error is BookingPolicyError {
   return error instanceof BookingPolicyError;
 }
+import type { BookingAlternative } from "./booking-series.types";

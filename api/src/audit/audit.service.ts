@@ -58,7 +58,7 @@ export type AuditActor = {
 
 export type AuditRecord = {
   actor: AuditActor;
-  targetType: "BOOKING" | "DEVICE" | "ROOM" | "JOB" | "WAITLIST";
+  targetType: "BOOKING" | "BOOKING_SERIES" | "DEVICE" | "ROOM" | "JOB" | "WAITLIST";
   targetId: string;
   eventType: string;
   sourceEventId?: string;

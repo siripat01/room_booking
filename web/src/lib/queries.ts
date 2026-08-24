@@ -84,6 +84,15 @@ export const bookingQuery = (id: string) => ({
   },
 });
 
+export const bookingSeriesQuery = () => ({
+  queryKey: ["booking-series"],
+  queryFn: async () => {
+    const response = await fetch("/api/booking-series", { credentials: "include" });
+    if (!response.ok) throw new Error("Failed to fetch recurring bookings");
+    return response.json() as Promise<BookingSeries[]>;
+  },
+});
+
 // ── Admin ─────────────────────────────────────────────────────────────────────
 
 export const adminBookingsQuery = (params?: { status?: string; page?: number; search?: string }) => ({
@@ -221,6 +230,22 @@ export type BookingListResponse = {
   page: number;
   limit: number;
   totalPages: number;
+};
+
+export type BookingSeries = {
+  id: string;
+  roomId: string;
+  room: { id: string; name: string; floor: string };
+  startDate: string;
+  endDate: string;
+  weekdays: string[];
+  startTime: string;
+  endTime: string;
+  attendees: number;
+  purpose?: string | null;
+  status: "ACTIVE" | "CANCELLED";
+  cancelledAt?: string | null;
+  _count: { bookings: number };
 };
 
 export type BookingTimelineEvent = {

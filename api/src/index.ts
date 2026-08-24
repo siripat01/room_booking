@@ -6,6 +6,7 @@ import { betterAuth } from "./middleware/auth.middleware";
 import authRoutes from "./auth/auth.route";
 import roomRoutes from "./room/room.route";
 import bookingRoutes from "./booking/booking.route";
+import { bookingSeriesRoutes } from "./booking/booking-series.route";
 import userRoutes from "./user/user.route";
 import { deviceRoutes } from "./device/device.route";
 import reportRoutes from "./report/report.route";
@@ -14,6 +15,7 @@ import { startBackgroundJobs } from "./jobs";
 import { jobHealthRoutes } from "./jobs/job-health.route";
 import { JobHealthService } from "./jobs/job-health.service";
 import { lineRoutes } from "./notification/line.route";
+import { realtimeRoutes } from "./realtime/realtime.route";
 import { startNotificationWorker } from "./notification/notification.worker";
 import prisma from "../libs/db";
 
@@ -39,12 +41,14 @@ const app = new Elysia({ prefix: "/api" })
   .use(betterAuth)
   .use(roomRoutes)
   .use(bookingRoutes)
+  .use(bookingSeriesRoutes)
   .use(userRoutes)
   .use(deviceRoutes)
   .use(reportRoutes)
   .use(subscriptionRoutes)
   .use(lineRoutes)
   .use(jobHealthRoutes)
+  .use(realtimeRoutes)
   .use(authRoutes)
   .get("/health", async ({ status }) => {
     const health = await new JobHealthService(prisma).readiness();

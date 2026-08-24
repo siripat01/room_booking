@@ -77,8 +77,8 @@ CHECKED_IN -> COMPLETED
 
 `COMPLETED`, `CANCELLED`, `REJECTED`, and `EXPIRED` are terminal.
 
-Recurring bookings do not exist yet. When introduced in Phase 6, every generated
-occurrence must call the same booking policy inside a correct transaction.
+Phase 6 recurring occurrences call this same booking policy inside serializable
+transactions and retain the database exclusion constraints.
 
 Migration: `20260819000000_booking_correctness_phase1`.
 
@@ -215,17 +215,27 @@ User signs in
 -> booking completes
 ```
 
-### Phase 6: High-Value Features — Not started
+### Phase 6: High-Value Features — Implemented and locally validated
 
-Begin only after booking correctness, device security, safe jobs, and critical
-tests are complete.
+Implementation is on `agent/high-value-features-phase6`.
 
-1. `BookingSeries` with weekly recurrence, conflict preview, occurrence/future/
-   whole-series edits and cancellations, and clear conflict alternatives.
-2. Real-time room status using SSE unless WebSockets become necessary; keep
-   polling fallback with backoff.
-3. Deterministic smart alternatives ranked by nearby time, equivalent room, and
-   combined room/time fit. Do not use AI for availability selection.
+- `BookingSeriesService` supports weekly preview, atomic creation, occurrence/
+  future/whole-series edits, and occurrence/future/entire cancellation. Every
+  occurrence uses `BookingPolicyService` in a serializable transaction and still
+  relies on the Phase 1 exclusion constraints.
+- Recurring creation/edit is Pro-only. Stripe end-of-period cancellation retains
+  access through `planExpiresAt`; a durable expiry job then downgrades the user
+  and cancels active series plus future active occurrences. Listing and cancelling
+  remain available after expiry.
+- Authenticated and device-credential SSE endpoints stream safe events from the
+  PostgreSQL audit history. This works across API instances without a broker;
+  clients reconnect with backoff and retain polling fallbacks.
+- Smart alternatives are deterministic and policy-validated: same room/nearby
+  time, another suitable room/same time, then a room-and-time combination.
+- PostgreSQL integration tests cover atomic recurring conflicts, edit scopes,
+  entitlement expiry, Stripe timing, ranking determinism, and safe SSE payloads.
+
+Migration: `20260824020000_booking_series_phase6`.
 
 ### Optional Flagship: Smart Occupancy — Not started and not required
 
@@ -350,6 +360,15 @@ During Phase 5 completion validation on 2026-08-24:
 
 Re-run the relevant checks instead of relying only on this historical result.
 
+During Phase 6 local validation on 2026-08-24:
+
+- All 16 migrations applied successfully to an empty PostgreSQL 17.6 database.
+- API unit tests passed 39/39 and PostgreSQL integration tests passed 27/27.
+- Frontend Vitest tests passed 4/4; API/web type-checks, Biome lint, and the
+  frontend production build passed. Existing lint diagnostics remain warnings.
+- The production API Docker image built successfully. The frontend build retains
+  a known main-chunk size warning.
+
 ## Working Rules for Future Sessions
 
 1. Inspect the repository and current branch before modifying it.
@@ -371,9 +390,10 @@ user-owned unless the user explicitly places them in scope.
 
 ## Recommended Next Session
 
-1. Review and merge `agent/automated-quality-phase5` after its CI gates pass.
+1. Review, commit, and push `agent/high-value-features-phase6` only with explicit
+   user authorization, then let CI revalidate migrations, tests, and Docker.
 2. Merge the room-time-slot hotfix before production validation so existing rooms
    receive the backfilled weekday schedule.
-3. Start Phase 6 only after the required Phase 5 gates remain green on `main`.
+3. Keep optional Smart Occupancy out of scope unless the user explicitly starts it.
 4. Configure a test LINE Messaging channel and signed webhook only for manual
    staging verification; never use real provider credentials in automated tests.
