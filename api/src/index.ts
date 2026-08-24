@@ -10,7 +10,7 @@ import userRoutes from "./user/user.route";
 import { deviceRoutes } from "./device/device.route";
 import reportRoutes from "./report/report.route";
 import { subscriptionRoutes } from "./subscription/subscription.route";
-import { startCronJobs } from "./cron/index";
+import { startBackgroundJobs } from "./jobs";
 import { lineRoutes } from "./notification/line.route";
 import { startNotificationWorker } from "./notification/notification.worker";
 import prisma from "../libs/db";
@@ -51,8 +51,26 @@ const app = new Elysia({ prefix: "/api" })
   .all("/version", () => process.env.APP_VERSION)
   .listen(3000);
 
-startCronJobs();
-startNotificationWorker(prisma);
+const backgroundJobs = startBackgroundJobs(prisma);
+const notificationWorker = startNotificationWorker(prisma);
+
+let shutdownPromise: Promise<void> | undefined;
+function shutdown(signal: "SIGINT" | "SIGTERM") {
+  shutdownPromise ??= (async () => {
+    console.log(`[shutdown] ${signal} received; draining workers and closing the API`);
+    app.stop();
+    await Promise.all([backgroundJobs.stop(), notificationWorker.stop()]);
+    await prisma.$disconnect();
+    console.log("[shutdown] RoomFlow API stopped cleanly");
+  })().catch((error) => {
+    console.error("[shutdown] Graceful shutdown failed", error);
+    process.exitCode = 1;
+  });
+  return shutdownPromise;
+}
+
+process.once("SIGTERM", () => void shutdown("SIGTERM"));
+process.once("SIGINT", () => void shutdown("SIGINT"));
 
 export type App = typeof app;
 

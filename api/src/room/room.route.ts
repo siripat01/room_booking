@@ -3,6 +3,7 @@ import { RoomService } from "./room.service";
 import prisma from "../../libs/db";
 import { betterAuth } from "../middleware/auth.middleware";
 import { getBangkokDateTime } from "../lib/bangkok-time";
+import { requestCorrelationId } from "../lib/request-correlation";
 
 const roomService = new RoomService(prisma);
 
@@ -52,8 +53,11 @@ const roomRoutes = new Elysia()
             .onBeforeHandle(({ user, status }) => {
                 if (user.role !== "adminRole") return status(403);
             })
-            .post("/rooms", ({ body }) =>
-                roomService.createRoom({ ...body, amenities: body.amenities ?? [], allowedRoles: body.allowedRoles ?? [], autoApprove: body.autoApprove ?? false }), {
+            .post("/rooms", ({ body, user, request }) =>
+                roomService.createRoom(
+                    { ...body, amenities: body.amenities ?? [], allowedRoles: body.allowedRoles ?? [], autoApprove: body.autoApprove ?? false },
+                    { type: "ADMIN", id: user.id, correlationId: requestCorrelationId(request) },
+                ), {
                 body: t.Object({
                     name: t.String(),
                     description: t.Optional(t.String()),
@@ -64,7 +68,11 @@ const roomRoutes = new Elysia()
                     autoApprove: t.Optional(t.Boolean()),
                 }),
             })
-            .put("/rooms/:id", ({ params: { id }, body }) => roomService.updateRoom(id, body), {
+            .put("/rooms/:id", ({ params: { id }, body, user, request }) => roomService.updateRoom(
+                id,
+                body,
+                { type: "ADMIN", id: user.id, correlationId: requestCorrelationId(request) },
+            ), {
                 body: t.Object({
                     name: t.Optional(t.String()),
                     description: t.Optional(t.String()),
@@ -76,9 +84,16 @@ const roomRoutes = new Elysia()
                     autoApprove: t.Optional(t.Boolean()),
                 }),
             })
-            .delete("/rooms/:id", ({ params: { id } }) => roomService.deleteRoom(id))
-            .put("/rooms/:id/time-slots", ({ params: { id }, body }) =>
-                roomService.replaceTimeSlots(id, body.slots), {
+            .delete("/rooms/:id", ({ params: { id }, user, request }) => roomService.deleteRoom(
+                id,
+                { type: "ADMIN", id: user.id, correlationId: requestCorrelationId(request) },
+            ))
+            .put("/rooms/:id/time-slots", ({ params: { id }, body, user, request }) =>
+                roomService.replaceTimeSlots(
+                    id,
+                    body.slots,
+                    { type: "ADMIN", id: user.id, correlationId: requestCorrelationId(request) },
+                ), {
                 body: t.Object({
                     slots: t.Array(t.Object({
                         dayOfWeek: t.String(),
@@ -88,7 +103,11 @@ const roomRoutes = new Elysia()
                     })),
                 }),
             })
-            .post("/rooms/:id/closures", ({ params: { id }, body }) => roomService.createClosure(id, body), {
+            .post("/rooms/:id/closures", ({ params: { id }, body, user, request }) => roomService.createClosure(
+                id,
+                body,
+                { type: "ADMIN", id: user.id, correlationId: requestCorrelationId(request) },
+            ), {
                 body: t.Object({
                     date: t.String(),
                     reason: t.Optional(t.String()),
@@ -97,7 +116,10 @@ const roomRoutes = new Elysia()
                     endTime: t.Optional(t.String()),
                 }),
             })
-            .delete("/rooms/:id/closures/:cId", ({ params: { cId } }) => roomService.deleteClosure(cId))
+            .delete("/rooms/:id/closures/:cId", ({ params: { cId }, user, request }) => roomService.deleteClosure(
+                cId,
+                { type: "ADMIN", id: user.id, correlationId: requestCorrelationId(request) },
+            ))
     )
 
 export default roomRoutes;

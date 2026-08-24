@@ -81,10 +81,18 @@
 
 ## ⚙️ CI/CD Workflow (GitHub Actions)
 
-หากจำเป็นต้องใช้งาน GitHub Actions คุณสามารถใส่ไฟล์ `.github/workflows/main.yml` เพื่อให้เช็คโค้ดก่อน Merge:
-- รัน Prisma Generate ใน CI ด้วยการใช้ URL จำลอง (Dummy URL) เพื่อไม่ให้ติดปัญหาการเชื่อมต่อ Database จริง
-- ใช้คำสั่งตรวจประเภทข้อมูลใน API: `tsc --noEmit --ignoreDeprecations 6.0`
-- ใช้คำสั่ง build ใน Web: `pnpm run build`
+`.github/workflows/main.yml` is the merge and deployment quality gate. Backend CI
+starts an isolated PostgreSQL 17.6 service, applies the complete migration history
+to an empty database, checks migration status, and runs unit, PostgreSQL integration,
+and type-check suites with provider delivery disabled. Frontend CI type-checks and
+builds the Vite application. A separate Buildx job verifies the production API
+Dockerfile before Fly deployment is allowed. Dependency caches use the actual
+`api/bun.lock` and `web/pnpm-lock.yaml` files.
+
+Fly deployment runs only after backend and Docker gates pass on `main`. Vercel
+preview/production deployment remains separate from booking correctness. Bun,
+PostgreSQL, Fly CLI, Vercel CLI, Elysia, and TypeScript versions are pinned to
+avoid unexpected `latest` upgrades in the critical path.
 
 ## Product Scope
 
@@ -184,6 +192,47 @@ For the exact LINE Official Account, LINE Developers Console, Fly secret,
 webhook, manual verification, and credential-rotation steps, see
 [`docs/line-messaging-setup.md`](docs/line-messaging-setup.md).
 
+## Safe Background Jobs and Auditability (Phase 4)
+
+Scheduled maintenance uses PostgreSQL as the durable coordination layer. Each
+API instance may wake the scheduler, but a unique time-bucketed `job_key` creates
+only one persisted job per task and interval. Workers claim different rows with
+`FOR UPDATE SKIP LOCKED`:
+
+```text
+API instances
+  -> idempotent background_jobs scheduler
+  -> SKIP LOCKED workers
+  -> booking state machine / notification outbox / waitlist policy
+  -> append-only audit_logs
+```
+
+The job types are booking expiration, automatic checkout, reminder enqueueing,
+waitlist promotion, and terminal-job retention. Jobs have bounded exponential
+retry, stale-lock recovery, safe errors, structured results, and 30-day completed
+history by default. Sent/cancelled notification jobs default to 90-day retention;
+failed notification jobs default to 180 days. Audit history is not removed by job
+retention. Notification delivery continues to use its dedicated outbox.
+
+Waitlist promotion periodically retries available future slots through
+`BookingPolicyService`; entries whose start time has passed become `EXPIRED`.
+Concurrent promotion remains protected by serializable transactions and the
+booking exclusion constraints.
+
+`AuditLog` records safe booking, room, device, waitlist, and job events with actor,
+target, previous/new state, correlation ID, and `TIMESTAMPTZ` timestamp. Credential
+hashes, plaintext device keys, pairing codes, and QR tokens are never audit
+metadata. Booking state changes still write `BookingEvent` and `AuditLog` in the
+same transaction. Admins can inspect a booking timeline from the booking table;
+ordinary booking detail responses do not expose audit metadata.
+
+Relevant settings are `BACKGROUND_JOB_SCHEDULE_INTERVAL_MS`,
+`BACKGROUND_JOB_LOCK_TIMEOUT_MS`, `BACKGROUND_JOB_MAX_ATTEMPTS`, and
+`BACKGROUND_JOB_RETENTION_DAYS`. Notification retention uses
+`NOTIFICATION_JOB_RETENTION_DAYS` and `FAILED_NOTIFICATION_JOB_RETENTION_DAYS`.
+Workers stop accepting timer wakeups and drain their in-flight run during graceful
+`SIGTERM`/`SIGINT` shutdown.
+
 ## Migration Process
 
 ```bash
@@ -201,6 +250,11 @@ Messaging user IDs. The constrained empty legacy column remains for one rolling
 deployment and can be dropped after every API machine runs Phase 3. Existing users
 must link the RoomFlow LINE bot again after deployment.
 
+The Phase 4 migration creates constrained `background_jobs` and `audit_logs`
+tables, adds `EXPIRED` waitlist state, and backfills existing `BookingEvent` rows
+into the generic audit timeline. The API also merges any event written by an older
+rolling-deployment instance that has not yet been mirrored into `AuditLog`.
+
 ## Tests
 
 ```bash
@@ -217,14 +271,16 @@ Integration tests cover concurrent booking exclusion, QR room
 binding/expiry/grace/replay, device credential rotation and revocation, pairing
 single-use behavior, audited walk-ins, concurrent database rate limiting,
 notification idempotency, multi-worker claiming, retries, duplicate reminder
-prevention, and LINE link-code consumption.
+prevention, LINE link-code consumption, multi-instance scheduled-job claiming,
+background-job retry and retention, booking ownership/timeline RBAC, and scheduled
+waitlist promotion with correlated audit.
 
 ## Known Limitations and Roadmap
 
-- Notification outbox cleanup/retention and operational dashboards can be added
-  with the Phase 4 job infrastructure.
-- Multi-instance-safe scheduling for non-notification jobs and the admin audit
-  timeline are Phase 4.
+- A cross-job operational dashboard and alerting remain future improvements;
+  background and notification terminal records already have retention.
+- Device online/offline is derived from heartbeat freshness and is not written as
+  a high-volume audit event on every heartbeat.
 - Full API/frontend/E2E quality gates are Phase 5.
 - Recurring bookings, SSE room status, and smart alternatives are Phase 6.
 - Smart occupancy remains optional and feature-flagged for a later project.

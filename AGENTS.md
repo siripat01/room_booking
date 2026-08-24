@@ -33,7 +33,9 @@ requirement.
 - `api/src/check-in/`: the shared QR and kiosk check-in policy.
 - `api/src/device/`: device credentials, pairing, kiosk status, scans, walk-ins,
   heartbeat, rotation, and revocation.
-- `api/src/cron/`: in-process expiration, checkout, reminder, and waitlist jobs.
+- `api/src/jobs/`: PostgreSQL-backed scheduling and workers for expiration,
+  checkout, reminders, waitlist promotion, and completed-job retention.
+- `api/src/audit/`: append-only cross-domain audit records.
 - `api/prisma/`: schema and reviewed migrations, including raw PostgreSQL SQL.
 - `api/test/`: PostgreSQL integration and concurrency tests.
 - `web/`: React, Vite, TanStack Router/Query, Tailwind CSS.
@@ -112,9 +114,10 @@ The Phase 2 migration intentionally retains scrubbed legacy credential columns
 for rolling-deploy compatibility. Add a later cleanup migration only after every
 deployed API instance uses the new hashed columns.
 
-### Phase 3: Notification Replacement — Implemented and locally validated; awaiting commit/merge
+### Phase 3: Notification Replacement — Implemented, validated, and locally merged
 
-Implementation is on `agent/notification-phase3`.
+Commit `19fe423c` was fast-forwarded into local `main`. Remote `main` still needs
+an explicitly authorized push.
 
 - `EmailNotificationProvider` and `LineMessagingProvider` implement one provider
   abstraction; `WebPushProvider` remains an optional future extension.
@@ -139,20 +142,27 @@ LINE Notify tokens because they cannot be converted to Messaging API user IDs.
 The constrained empty legacy column remains for one rolling deployment and should
 be dropped only after all API machines run Phase 3. Users must link the bot again.
 
-### Phase 4: Safe Jobs and Auditability — Not started; event foundation exists
+### Phase 4: Safe Jobs and Auditability — Implemented and locally validated
 
-`BookingEvent` exists from Phase 1 and notification retry jobs exist from Phase 3,
-but the phase is not complete.
+Implementation is on `agent/safe-jobs-audit-phase4` and is not committed.
 
-- Replace per-instance `setInterval` execution with PostgreSQL advisory locks or
-  a database-backed job table using `FOR UPDATE SKIP LOCKED`.
-- Make expiration, automatic checkout, and scheduled waitlist promotion safe
-  across multiple application instances. Notification retries and reminder job
-  deduplication are already database-backed from Phase 3.
-- Prevent duplicate reminders and make job execution observable/retryable.
-- Complete audit coverage for booking, device, room, and job events with actors,
-  targets, previous/new status, safe metadata, and correlation IDs.
-- Add an admin-only booking timeline.
+- Time-bucketed job keys make scheduler wakeups idempotent across API instances.
+- Workers claim persisted jobs with `FOR UPDATE SKIP LOCKED`, bounded exponential
+  retry, stale-lock recovery, safe errors, structured results, and lock ownership.
+- Expiration, automatic checkout, reminder enqueueing, and waitlist promotion are
+  separate durable jobs. Notification retries remain in the Phase 3 outbox.
+- Completed background-job history has configurable retention, defaulting to 30
+  days; append-only audit history remains after job-row cleanup.
+- Scheduled waitlist promotion uses `BookingPolicyService`; past entries become
+  `EXPIRED` and all status changes are correlated and audited.
+- `AuditLog` covers booking, device, room, waitlist, and job targets. Booking state
+  changes dual-write `BookingEvent` and `AuditLog` in one transaction.
+- Audit metadata excludes credential hashes, plaintext keys, pairing codes, and QR
+  tokens. Heartbeats are intentionally not logged on every request.
+- `GET /bookings/:id/timeline` is admin-only, and the admin booking UI exposes the
+  correlated timeline. Ordinary booking details no longer include audit metadata.
+
+Migration: `20260822000000_safe_jobs_and_audit_phase4`.
 
 ### Phase 5: Automated Quality — Partially implemented
 
@@ -161,19 +171,28 @@ LINE signature/link hashing unit tests, PostgreSQL booking-concurrency tests,
 Phase 2 device-security tests, and Phase 3 notification worker/idempotency/retry
 integration tests. This does not yet satisfy the full phase.
 
+Implemented on the uncommitted Phase 4 branch:
+
+- Backend CI uses a pinned PostgreSQL 17.6 service and applies all migrations to
+  an empty database before running unit and integration tests.
+- CI cache keys now match `api/bun.lock` and `web/pnpm-lock.yaml`.
+- API Docker Buildx validation gates Fly deployment.
+- Bun 1.3.14, PostgreSQL 17.6, Fly CLI 0.4.76, Vercel CLI 59.1.4,
+  Elysia 1.4.28, and TypeScript 6.0.3 are pinned in critical paths.
+- Booking ownership/list isolation and timeline service-boundary RBAC have real
+  PostgreSQL integration tests.
+- Worker loops drain in-flight work on graceful shutdown, terminal notification
+  jobs have configurable retention, and audit metadata is sanitized centrally.
+
 Still required:
 
-- Reliable CI test database and migration validation.
-- Full API tests for RBAC, ownership, waitlist, reminders, and Stripe webhook
-  idempotency.
+- Remaining API tests for route-level RBAC, Stripe webhook idempotency, and other
+  uncovered ownership mutations.
 - Frontend component tests for critical states.
 - Optional Playwright E2E for the primary booking-to-completion flow.
 - Lint and format commands.
-- CI gates for lint, type-check, unit/integration tests, migration validation,
-  frontend/backend builds, and Docker build.
-- Correct cache keys for actual lockfiles and pinned important runtime/container
-  versions instead of `latest`.
-- A professional health response if it is still informal.
+- CI lint/format and frontend component-test gates.
+- Cross-job health metrics and alerting.
 
 Required E2E flow:
 
@@ -237,8 +256,8 @@ bun test
 TEST_DATABASE_URL=postgresql://user:password@localhost:5432/room_booking_test \
   bun run test:integration
 
-# API type-check (TypeScript may be supplied by the web workspace locally)
-../web/node_modules/.bin/tsc -p tsconfig.json --noEmit
+# API type-check
+bun run typecheck
 
 # Web
 cd ../web
@@ -282,6 +301,28 @@ During Phase 3 local validation:
 - The Docker socket remained inaccessible, but a pinned PostgreSQL 16.10 Podman
   container provided production-engine migration and integration validation.
 
+During Phase 4 local validation:
+
+- All 14 migrations applied from an empty PGlite database with `pgcrypto` and
+  `btree_gist`.
+- All 43 tests passed and 0 failed, including concurrent scheduler idempotency,
+  two-worker `SKIP LOCKED` claiming, durable retry, rolling-deploy timeline fallback,
+  and scheduled waitlist promotion through the booking policy.
+- Backend and frontend type-checks and the web production build passed. The build
+  has only the existing >500 kB chunk warning. Docker validation remains blocked
+  because the Docker socket is inaccessible in this environment.
+
+During the Phase 5 risk-hardening continuation on 2026-08-22:
+
+- All 14 migrations applied successfully to an empty PostgreSQL 17.6 database,
+  and `prisma migrate status` reported the schema up to date.
+- 51 tests passed and 0 failed against PostgreSQL 17.6, including background-job
+  retention, two-worker claiming, duplicate reminder prevention, booking
+  ownership/list isolation, and timeline RBAC.
+- API/frontend type-checks and the frontend production build passed. The existing
+  >500 kB main-chunk warning remains.
+- The production API Docker image built successfully from pinned Bun 1.3.14.
+
 Re-run the relevant checks instead of relying only on this historical result.
 
 ## Working Rules for Future Sessions
@@ -305,9 +346,10 @@ user-owned unless the user explicitly places them in scope.
 
 ## Recommended Next Session
 
-1. Review and commit the validated Phase 3 changes without staging the unrelated
-   top-level `package.json` and `bun.lock` files.
-2. Configure a test LINE Messaging channel and signed webhook only for manual
+1. Review and commit the combined Phase 4 and Phase 5 hardening without staging the unrelated top-level
+   `package.json` and `bun.lock` files.
+2. Push local `main` and the working branch only with explicit authorization.
+3. Add lint/format, frontend component tests, Stripe webhook idempotency tests,
+   and a cross-job operational health view.
+4. Configure a test LINE Messaging channel and signed webhook only for manual
    staging verification; never use real provider credentials in automated tests.
-3. Merge `agent/notification-phase3` before beginning Phase 4.
-4. Update this file and README when the phase status changes.
