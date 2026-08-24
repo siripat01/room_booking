@@ -1,31 +1,63 @@
-# Elysia with Bun runtime
+# RoomFlow API
 
-## Getting Started
-To get started with this template, simply paste this command into your terminal:
-```bash
-bun create elysia ./elysia-example
-```
+The RoomFlow API is a Bun and Elysia modular monolith backed by Prisma and
+PostgreSQL. Domain services enforce booking and check-in rules; PostgreSQL
+constraints and durable job tables provide concurrency and multi-instance safety.
+
+See the [project README](../README.md) for product scope, architecture, complete
+environment reference, booking rules, security model, and CI/CD behavior.
 
 ## Development
-To start the development server run:
+
 ```bash
+cp .env.example .env
+docker compose up -d postgres
+bun install --frozen-lockfile
+bun run prisma generate
+bun run migrate
 bun run dev
 ```
 
-Open http://localhost:3000/ with your browser to see the result.
+The API listens on `http://localhost:3000` with routes under `/api`.
 
-## Database migrations
+Do not use a PostgreSQL transaction pooler for the API connection. Booking
+creation uses interactive transactions with serializable isolation; use a direct
+connection or session pooler on port `5432`.
 
-Run committed Prisma migrations with:
+## Commands
 
 ```bash
-bun run migrate
+bun run dev               # Development server with watch mode
+bun run start             # Production-style server process
+bun run lint              # Biome lint
+bun run format            # Biome formatting
+bun run typecheck         # TypeScript without output
+bun run test:unit         # Database-independent unit tests
+bun run test:routes       # Compile the complete Elysia route graph
+bun run test:integration  # PostgreSQL integration tests
+bun run migrate           # Committed Prisma migrations with bounded retry
 ```
 
-The command uses `prisma migrate deploy` and retries transient database or DNS
-failures with bounded exponential backoff. Fly.io runs it once through the
-`release_command` before replacing application machines. The application
-container itself does not run migrations during startup.
+Integration tests require `TEST_DATABASE_URL` pointing to a migrated disposable
+database. Never use production or shared development data. Set
+`NOTIFICATIONS_DISABLED=true` so tests cannot contact notification providers.
 
-Migration files must be generated and reviewed during development, then
-committed under `prisma/migrations/`. Do not use `prisma db push` in production.
+## Production lifecycle
+
+The Docker image starts `bun src/index.ts`. Fly.io runs `bun run migrate` as a
+release command before replacing application machines, then checks
+`GET /api/health`. Application startup does not apply schema changes itself.
+
+The migration wrapper runs `prisma migrate deploy` and retries transient DNS or
+database availability failures with bounded exponential backoff. Migrations must
+be generated and reviewed during development and committed under
+`prisma/migrations/`. Never use `prisma db push` in production.
+
+## Operational endpoints
+
+- `GET /api/health`: public database readiness and application version.
+- `GET /api/operations/jobs/health`: admin-only durable job health.
+- OpenAPI documentation is composed from the Elysia application routes.
+
+Secrets, device credentials, pairing codes, QR plaintext, and provider tokens
+must never be logged or returned by normal list endpoints.
