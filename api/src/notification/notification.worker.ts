@@ -1,6 +1,7 @@
 import { Prisma, type PrismaClient } from "../../generated/prisma/client";
 import { EmailNotificationProvider } from "./email-notification.provider";
 import { LineMessagingProvider } from "./line-messaging.provider";
+import { startPollingLoop } from "../lib/polling-loop";
 import { renderNotification } from "./notification-template";
 import {
   NotificationDeliveryError,
@@ -207,20 +208,9 @@ export class NotificationWorker {
 export function startNotificationWorker(prisma: PrismaClient) {
   const worker = new NotificationWorker(prisma);
   const intervalMs = workerIntervalMs();
-  let running = false;
-  const run = async () => {
-    if (running) return;
-    running = true;
-    try {
-      await worker.runOnce();
-    } catch (error) {
-      console.error("[notification] Worker run failed", error);
-    } finally {
-      running = false;
-    }
-  };
-  void run();
-  const timer = setInterval(() => void run(), intervalMs);
-  timer.unref?.();
-  return timer;
+  return startPollingLoop(async () => {
+    await worker.runOnce();
+  }, intervalMs, (error) => {
+    console.error("[notification] Worker run failed", error);
+  });
 }

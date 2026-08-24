@@ -5,6 +5,7 @@
     "test": "bun test",
     "test:unit": "bun test src",
     "test:integration": "bun test test",
+    "typecheck": "tsc -p tsconfig.json --noEmit --ignoreDeprecations 6.0",
     "dev": "bun run --watch src/index.ts",
     "start": "bun src/index.ts",
     "migrate": "bun scripts/migrate.ts"
@@ -19,7 +20,7 @@
     "@prisma/client": "^7.8.0",
     "better-auth": "^1.6.11",
     "dotenv": "^17.4.2",
-    "elysia": "latest",
+    "elysia": "1.4.28",
     "node-cron": "^4.5.0",
     "pg": "^8.21.0",
     "prisma": "^7.8.0",
@@ -29,7 +30,8 @@
   "devDependencies": {
     "@types/node-cron": "^3.0.11",
     "@types/pg": "^8.20.0",
-    "bun-types": "latest"
+    "bun-types": "1.3.14",
+    "typescript": "6.0.3"
   },
   "module": "src/index.js"
 }

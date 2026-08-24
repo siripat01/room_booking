@@ -62,6 +62,30 @@ enum NotificationJobStatus {
   CANCELLED
 }
 
+enum BackgroundJobType {
+  EXPIRE_BOOKINGS
+  AUTO_CHECKOUT
+  ENQUEUE_REMINDERS
+  PROMOTE_WAITLIST
+  PURGE_JOB_HISTORY
+}
+
+enum BackgroundJobStatus {
+  PENDING
+  PROCESSING
+  RETRY
+  COMPLETED
+  FAILED
+}
+
+enum AuditTargetType {
+  BOOKING
+  DEVICE
+  ROOM
+  JOB
+  WAITLIST
+}
+
 enum DayOfWeek {
   SUNDAY
   MONDAY
@@ -283,6 +307,56 @@ model BookingEvent {
   @@map("booking_events")
 }
 
+model AuditLog {
+  id             String           @id @default(uuid())
+  sourceEventId  String?          @unique @map("source_event_id")
+  actorType      BookingActorType @map("actor_type")
+  actorId        String?          @map("actor_id")
+  targetType     AuditTargetType  @map("target_type")
+  targetId       String           @map("target_id")
+  bookingId      String?          @map("booking_id")
+  deviceId       String?          @map("device_id")
+  roomId         String?          @map("room_id")
+  eventType      String           @map("event_type")
+  previousStatus String?          @map("previous_status")
+  newStatus      String?          @map("new_status")
+  metadata       Json?            @db.JsonB
+  correlationId  String?          @map("correlation_id")
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([targetType, targetId, createdAt])
+  @@index([bookingId, createdAt])
+  @@index([deviceId, createdAt])
+  @@index([roomId, createdAt])
+  @@index([actorType, actorId, createdAt])
+  @@map("audit_logs")
+}
+
+model BackgroundJob {
+  id           String              @id @default(uuid())
+  type         BackgroundJobType
+  status       BackgroundJobStatus @default(PENDING)
+  jobKey       String              @unique @map("job_key")
+  scheduledFor DateTime            @map("scheduled_for") @db.Timestamptz(3)
+  attempts     Int                 @default(0)
+  maxAttempts  Int                 @default(5) @map("max_attempts")
+  availableAt  DateTime            @default(now()) @map("available_at") @db.Timestamptz(3)
+  lockedAt     DateTime?           @map("locked_at") @db.Timestamptz(3)
+  lockedBy     String?             @map("locked_by")
+  startedAt    DateTime?           @map("started_at") @db.Timestamptz(3)
+  completedAt  DateTime?           @map("completed_at") @db.Timestamptz(3)
+  lastError    String?             @map("last_error")
+  result       Json?               @db.JsonB
+  createdAt    DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([status, availableAt, createdAt])
+  @@index([status, lockedAt])
+  @@index([type, scheduledFor])
+  @@index([completedAt])
+  @@map("background_jobs")
+}
+
 // ─────────────────────────────────────────────
 // NOTIFICATIONS
 // ─────────────────────────────────────────────
@@ -326,6 +400,7 @@ model NotificationJob {
 
   @@index([status, availableAt, createdAt])
   @@index([status, lockedAt])
+  @@index([status, updatedAt])
   @@index([userId, createdAt])
   @@index([bookingId, type])
   @@map("notification_jobs")
@@ -437,6 +512,7 @@ enum WaitlistStatus {
   WAITING
   PROMOTED
   CANCELLED
+  EXPIRED
 }
 
 model WaitlistEntry {

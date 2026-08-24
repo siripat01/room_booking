@@ -76,6 +76,9 @@ beforeAll(async () => {
 afterAll(async () => {
   if (!prisma) return;
   await prisma.booking.deleteMany({ where: { OR: [{ id: bookingId }, { roomId: { in: roomIds } }] } });
+  await prisma.auditLog.deleteMany({
+    where: { OR: [{ deviceId: { in: deviceIds } }, { roomId: { in: roomIds } }] },
+  });
   await prisma.rateLimitBucket.deleteMany({ where: { scope: "integration-rate-limit" } });
   const principals = await prisma.device.findMany({
     where: { id: { in: deviceIds } },
@@ -146,6 +149,19 @@ integrationTest("device rotation, revocation, reactivation, and pairing invalida
   expect(await deviceService.authenticateDevice(deviceIds[1], reactivated.deviceKey)).toBeNull();
   expect(await deviceService.authenticateDevice(deviceIds[1], paired.deviceKey)).not.toBeNull();
   await expect(deviceService.pairDevice(pairing.code)).rejects.toThrow(/Invalid or expired/);
+
+  const auditPayload = JSON.stringify(await prisma.auditLog.findMany({
+    where: { deviceId: deviceIds[1] },
+    select: { eventType: true, metadata: true },
+  }));
+  expect(auditPayload).toContain("DEVICE_CREDENTIAL_ROTATED");
+  expect(auditPayload).toContain("DEVICE_REVOKED");
+  expect(auditPayload).toContain("DEVICE_REACTIVATED");
+  expect(auditPayload).toContain("DEVICE_PAIRED");
+  expect(auditPayload).not.toContain(rotated.deviceKey);
+  expect(auditPayload).not.toContain(reactivated.deviceKey);
+  expect(auditPayload).not.toContain(paired.deviceKey);
+  expect(auditPayload).not.toContain(pairing.code);
 });
 
 integrationTest("walk-in uses the device system principal and records requester audit metadata", async () => {

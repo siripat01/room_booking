@@ -1,7 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { adminBookingsQuery, type BookingStatus, type Booking } from "../../lib/queries";
+import {
+  adminBookingsQuery,
+  bookingTimelineQuery,
+  type BookingStatus,
+  type Booking,
+} from "../../lib/queries";
 import { app } from "../../lib/api";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -11,7 +16,7 @@ import { Textarea } from "../../components/ui/textarea";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "../../components/ui/dialog";
-import { CalendarDays, Clock, Users, CheckCircle2, XCircle, Loader2, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarDays, Clock, Users, CheckCircle2, XCircle, Loader2, Search, ChevronLeft, ChevronRight, History } from "lucide-react";
 import { LoadingCentered } from "../../components/LoadingSpinner";
 import { toast } from "sonner";
 
@@ -51,6 +56,7 @@ function AdminBookingsPage() {
   const [search, setSearch] = useState("");
   const [rejectTarget, setRejectTarget] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
+  const [timelineTarget, setTimelineTarget] = useState<Booking | null>(null);
   const tabTotals = useRef<Record<number, number>>({});
 
   // Debounce search input
@@ -65,6 +71,9 @@ function AdminBookingsPage() {
   const bookings: Booking[] = (data as any)?.bookings ?? [];
   const total: number = (data as any)?.total ?? 0;
   const totalPages: number = (data as any)?.totalPages ?? 1;
+  const { data: timeline = [], isLoading: timelineLoading, isError: timelineError } = useQuery(
+    bookingTimelineQuery(timelineTarget?.id ?? null),
+  );
 
   // Keep per-tab totals so inactive tabs still show a count badge
   useEffect(() => {
@@ -208,8 +217,13 @@ function AdminBookingsPage() {
                       )}
                     </td>
                     <td className="px-4 py-3.5">
-                      {b.status === "PENDING" && (
-                        <div className="flex gap-1.5">
+                      <div className="flex flex-wrap gap-1.5">
+                        <Button size="sm" variant="outline" onClick={() => setTimelineTarget(b)}
+                          className="h-7 text-xs px-2.5">
+                          <History className="w-3 h-3 mr-1" />Timeline
+                        </Button>
+                        {b.status === "PENDING" && (
+                          <>
                           <Button size="sm" onClick={() => approveMutation.mutate(b.id)} disabled={isActing}
                             className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 px-2.5">
                             {isActing ? <Loader2 className="w-3 h-3 animate-spin" /> : <><CheckCircle2 className="w-3 h-3 mr-1" />Approve</>}
@@ -220,8 +234,9 @@ function AdminBookingsPage() {
                             className="h-7 text-xs text-red-600 border-red-200 hover:bg-red-50 px-2.5">
                             <XCircle className="w-3 h-3 mr-1" />Reject
                           </Button>
-                        </div>
-                      )}
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -268,6 +283,59 @@ function AdminBookingsPage() {
               Reject Booking
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!timelineTarget} onOpenChange={(open) => { if (!open) setTimelineTarget(null); }}>
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Booking timeline</DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              {timelineTarget?.room?.name ?? "Room"} · {timelineTarget?.user?.name ?? "User"}
+            </p>
+          </DialogHeader>
+          {timelineLoading ? (
+            <div className="py-10"><LoadingCentered /></div>
+          ) : timelineError ? (
+            <p className="py-8 text-center text-sm text-red-600">Unable to load the audit timeline.</p>
+          ) : timeline.length === 0 ? (
+            <p className="py-8 text-center text-sm text-muted-foreground">No audit events recorded.</p>
+          ) : (
+            <ol className="relative ml-2 border-l border-slate-200 space-y-6 py-2">
+              {timeline.map((event) => (
+                <li key={event.id} className="ml-5">
+                  <span className="absolute -left-1.5 mt-1.5 h-3 w-3 rounded-full border-2 border-white bg-blue-600" />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-sm text-slate-900">
+                      {event.eventType.replaceAll("_", " ")}
+                    </span>
+                    {event.newStatus && (
+                      <Badge variant="outline" className="text-[10px]">
+                        {event.previousStatus ? `${event.previousStatus} → ` : ""}{event.newStatus}
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {new Date(event.createdAt).toLocaleString("en-GB", {
+                      timeZone: "Asia/Bangkok",
+                      dateStyle: "medium",
+                      timeStyle: "medium",
+                    })} · {event.actorType}{event.actorId ? ` (${event.actorId})` : ""}
+                  </p>
+                  {event.metadata && Object.keys(event.metadata).length > 0 && (
+                    <pre className="mt-2 overflow-x-auto rounded-md bg-slate-50 p-2 text-[11px] text-slate-600">
+                      {JSON.stringify(event.metadata, null, 2)}
+                    </pre>
+                  )}
+                  {event.correlationId && (
+                    <p className="mt-1 break-all font-mono text-[10px] text-slate-400">
+                      correlation: {event.correlationId}
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ol>
+          )}
         </DialogContent>
       </Dialog>
     </div>

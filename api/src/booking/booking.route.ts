@@ -4,12 +4,9 @@ import { BookingService } from "./booking.service";
 import { isBookingPolicyError } from "./booking.errors";
 import { CheckInPolicyError } from "../check-in/check-in.errors";
 import prisma from "../../libs/db";
+import { requestCorrelationId } from "../lib/request-correlation";
 
 const bookingService = new BookingService(prisma);
-
-function requestCorrelationId(request: Request) {
-    return request.headers.get("x-request-id") ?? crypto.randomUUID();
-}
 
 const bookingRoutes = new Elysia({ prefix: "/bookings" })
     .use(betterAuth)
@@ -66,7 +63,7 @@ const bookingRoutes = new Elysia({ prefix: "/bookings" })
     )
     .post(
         "/waitlist",
-        async ({ user, body, status }) => {
+        async ({ user, body, status, request }) => {
             try {
                 return await bookingService.joinWaitlist({
                     userId: user.id,
@@ -76,6 +73,7 @@ const bookingRoutes = new Elysia({ prefix: "/bookings" })
                     attendees: body.attendees,
                     purpose: body.purpose,
                     userRole: user.role ?? "userRole",
+                    correlationId: requestCorrelationId(request),
                 });
             } catch (e: any) {
                 if (e.message === "Waitlist requires PRO plan") return status(403, { error: e.message });
@@ -96,7 +94,16 @@ const bookingRoutes = new Elysia({ prefix: "/bookings" })
     )
     .delete(
         "/waitlist/:wId",
-        async ({ user, params: { wId } }) => bookingService.leaveWaitlist(wId, user.id),
+        async ({ user, params: { wId }, request }) =>
+            bookingService.leaveWaitlist(wId, user.id, requestCorrelationId(request)),
+        { auth: true },
+    )
+    .get(
+        "/:id/timeline",
+        async ({ user, params: { id }, status }) => {
+            if (user.role !== "adminRole") return status(403);
+            return bookingService.getBookingTimeline(id, user.role);
+        },
         { auth: true },
     )
     .get(
@@ -160,9 +167,15 @@ const bookingRoutes = new Elysia({ prefix: "/bookings" })
     )
     .post(
         "/:id/qr",
-        async ({ user, params: { id }, status }) => {
+        async ({ user, params: { id }, status, request }) => {
             try {
-                return await bookingService.generateQr(id, user.id, user.role ?? "userRole");
+                return await bookingService.generateQr(
+                    id,
+                    user.id,
+                    user.role ?? "userRole",
+                    new Date(),
+                    requestCorrelationId(request),
+                );
             } catch (error) {
                 return status(400, {
                     error: error instanceof Error ? error.message : "QR generation failed",

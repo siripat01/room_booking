@@ -1,5 +1,6 @@
 import type { PrismaClient } from "../../generated/prisma/client";
 import type { CreateRoomInput } from "../../type/room";
+import { AuditService, type AuditActor } from "../audit/audit.service";
 import {
     addCalendarDays,
     bangkokDayBounds,
@@ -8,6 +9,8 @@ import {
 } from "../lib/bangkok-time";
 
 export class RoomService {
+    private readonly audit = new AuditService();
+
     constructor(
         private readonly prisma: PrismaClient,
     ) { }
@@ -60,29 +63,69 @@ export class RoomService {
         }
     }
 
-    async createRoom(data: CreateRoomInput) {
+    async createRoom(data: CreateRoomInput, actor: AuditActor = { type: "SYSTEM" }) {
         try {
-            return await this.prisma.room.create({ data });
+            return await this.prisma.$transaction(async (tx) => {
+                const room = await tx.room.create({ data });
+                await this.audit.record(tx, {
+                    actor,
+                    targetType: "ROOM",
+                    targetId: room.id,
+                    roomId: room.id,
+                    eventType: "ROOM_CREATED",
+                    newStatus: room.isActive ? "ACTIVE" : "INACTIVE",
+                    metadata: { room: safeRoomAuditState(room) },
+                });
+                return room;
+            });
         } catch (e) {
             console.error(e);
             throw new Error("Failed to create room");
         }
     }
 
-    async updateRoom(id: string, data: Partial<CreateRoomInput>) {
+    async updateRoom(id: string, data: Partial<CreateRoomInput>, actor: AuditActor = { type: "SYSTEM" }) {
         try {
-            return await this.prisma.room.update({ where: { id }, data });
+            return await this.prisma.$transaction(async (tx) => {
+                const previous = await tx.room.findUniqueOrThrow({ where: { id } });
+                const room = await tx.room.update({ where: { id }, data });
+                await this.audit.record(tx, {
+                    actor,
+                    targetType: "ROOM",
+                    targetId: id,
+                    roomId: id,
+                    eventType: "ROOM_UPDATED",
+                    previousStatus: previous.isActive ? "ACTIVE" : "INACTIVE",
+                    newStatus: room.isActive ? "ACTIVE" : "INACTIVE",
+                    metadata: {
+                        before: safeRoomAuditState(previous),
+                        after: safeRoomAuditState(room),
+                    },
+                });
+                return room;
+            });
         } catch (e) {
             console.error(e);
             throw new Error("Failed to update room");
         }
     }
 
-    async deleteRoom(id: string) {
+    async deleteRoom(id: string, actor: AuditActor = { type: "SYSTEM" }) {
         try {
-            return await this.prisma.room.update({
-                where: { id },
-                data: { isActive: false },
+            return await this.prisma.$transaction(async (tx) => {
+                const previous = await tx.room.findUniqueOrThrow({ where: { id } });
+                const room = await tx.room.update({ where: { id }, data: { isActive: false } });
+                await this.audit.record(tx, {
+                    actor,
+                    targetType: "ROOM",
+                    targetId: id,
+                    roomId: id,
+                    eventType: "ROOM_DEACTIVATED",
+                    previousStatus: previous.isActive ? "ACTIVE" : "INACTIVE",
+                    newStatus: "INACTIVE",
+                    metadata: { name: room.name },
+                });
+                return room;
             });
         } catch (e) {
             console.error(e);
@@ -189,16 +232,42 @@ export class RoomService {
         });
     }
 
-    async replaceTimeSlots(roomId: string, slots: { dayOfWeek: string; openTime: string; closeTime: string; isActive?: boolean }[]) {
-        await this.prisma.timeSlot.deleteMany({ where: { roomId } });
-        return this.prisma.timeSlot.createMany({
-            data: slots.map((s) => ({
+    async replaceTimeSlots(
+        roomId: string,
+        slots: { dayOfWeek: string; openTime: string; closeTime: string; isActive?: boolean }[],
+        actor: AuditActor = { type: "SYSTEM" },
+    ) {
+        return this.prisma.$transaction(async (tx) => {
+            await tx.room.findUniqueOrThrow({ where: { id: roomId }, select: { id: true } });
+            const previous = await tx.timeSlot.findMany({ where: { roomId }, orderBy: { dayOfWeek: "asc" } });
+            await tx.timeSlot.deleteMany({ where: { roomId } });
+            const created = await tx.timeSlot.createMany({
+                data: slots.map((s) => ({
+                    roomId,
+                    dayOfWeek: s.dayOfWeek as any,
+                    openTime: s.openTime,
+                    closeTime: s.closeTime,
+                    isActive: s.isActive ?? true,
+                })),
+            });
+            await this.audit.record(tx, {
+                actor,
+                targetType: "ROOM",
+                targetId: roomId,
                 roomId,
-                dayOfWeek: s.dayOfWeek as any,
-                openTime: s.openTime,
-                closeTime: s.closeTime,
-                isActive: s.isActive ?? true,
-            })),
+                eventType: "ROOM_TIME_SLOTS_REPLACED",
+                metadata: {
+                    previousCount: previous.length,
+                    newCount: created.count,
+                    slots: slots.map((slot) => ({
+                        dayOfWeek: slot.dayOfWeek,
+                        openTime: slot.openTime,
+                        closeTime: slot.closeTime,
+                        isActive: slot.isActive ?? true,
+                    })),
+                },
+            });
+            return created;
         });
     }
 
@@ -212,23 +281,78 @@ export class RoomService {
         });
     }
 
-    async createClosure(roomId: string, data: { date: string; reason?: string; allDay?: boolean; startTime?: string; endTime?: string }) {
-        return this.prisma.roomClosure.create({
-            data: {
+    async createClosure(
+        roomId: string,
+        data: { date: string; reason?: string; allDay?: boolean; startTime?: string; endTime?: string },
+        actor: AuditActor = { type: "SYSTEM" },
+    ) {
+        return this.prisma.$transaction(async (tx) => {
+            await tx.room.findUniqueOrThrow({ where: { id: roomId }, select: { id: true } });
+            const closure = await tx.roomClosure.create({
+                data: {
+                    roomId,
+                    date: new Date(data.date),
+                    reason: data.reason,
+                    allDay: data.allDay ?? true,
+                    startTime: data.startTime,
+                    endTime: data.endTime,
+                },
+            });
+            await this.audit.record(tx, {
+                actor,
+                targetType: "ROOM",
+                targetId: roomId,
                 roomId,
-                date: new Date(data.date),
-                reason: data.reason,
-                allDay: data.allDay ?? true,
-                startTime: data.startTime,
-                endTime: data.endTime,
-            },
+                eventType: "ROOM_CLOSURE_CREATED",
+                metadata: {
+                    closureId: closure.id,
+                    date: data.date,
+                    reason: closure.reason ?? null,
+                    allDay: closure.allDay,
+                    startTime: closure.startTime ?? null,
+                    endTime: closure.endTime ?? null,
+                },
+            });
+            return closure;
         });
     }
 
-    async deleteClosure(closureId: string) {
-        const closure = await this.prisma.roomClosure.findUnique({ where: { id: closureId } });
-        if (!closure) throw new Error("Closure not found");
-        await this.prisma.roomClosure.delete({ where: { id: closureId } });
-        return { success: true };
+    async deleteClosure(closureId: string, actor: AuditActor = { type: "SYSTEM" }) {
+        return this.prisma.$transaction(async (tx) => {
+            const closure = await tx.roomClosure.findUnique({ where: { id: closureId } });
+            if (!closure) throw new Error("Closure not found");
+            await tx.roomClosure.delete({ where: { id: closureId } });
+            await this.audit.record(tx, {
+                actor,
+                targetType: "ROOM",
+                targetId: closure.roomId,
+                roomId: closure.roomId,
+                eventType: "ROOM_CLOSURE_DELETED",
+                metadata: { closureId, date: closure.date.toISOString().slice(0, 10) },
+            });
+            return { success: true };
+        });
     }
+}
+
+function safeRoomAuditState(room: {
+    name: string;
+    description: string | null;
+    capacity: number;
+    floor: string;
+    amenities: string[];
+    allowedRoles: string[];
+    autoApprove: boolean;
+    isActive: boolean;
+}) {
+    return {
+        name: room.name,
+        description: room.description,
+        capacity: room.capacity,
+        floor: room.floor,
+        amenities: room.amenities,
+        allowedRoles: room.allowedRoles,
+        autoApprove: room.autoApprove,
+        isActive: room.isActive,
+    };
 }

@@ -4,6 +4,7 @@ import { CheckInPolicyError } from "../check-in/check-in.errors";
 import { DatabaseRateLimiter } from "../lib/database-rate-limiter";
 import { betterAuth } from "../middleware/auth.middleware";
 import { DeviceService } from "./device.service";
+import { requestCorrelationId } from "../lib/request-correlation";
 
 const deviceService = new DeviceService(prisma);
 const rateLimiter = new DatabaseRateLimiter(prisma);
@@ -12,10 +13,6 @@ function clientIp(request: Request): string {
   return request.headers.get("fly-client-ip")
     ?? request.headers.get("x-forwarded-for")?.split(",")[0]?.trim()
     ?? "unknown";
-}
-
-function correlationId(request: Request): string {
-  return request.headers.get("x-request-id") ?? crypto.randomUUID();
 }
 
 async function isRateLimited(
@@ -37,24 +34,39 @@ export const deviceRoutes = new Elysia()
       })
       .get("/devices", () => deviceService.getAllDevices())
       .get("/devices/:id", ({ params: { id } }) => deviceService.getDeviceById(id))
-      .post("/devices", ({ body }) => deviceService.createDevice(body), {
+      .post("/devices", ({ body, user, request }) => deviceService.createDevice(body, {
+        type: "ADMIN", id: user.id, correlationId: requestCorrelationId(request),
+      }), {
         body: t.Object({
           name: t.String({ minLength: 1, maxLength: 120 }),
           roomId: t.Optional(t.Nullable(t.String())),
           isActive: t.Optional(t.Boolean()),
         }),
       })
-      .put("/devices/:id", ({ params: { id }, body }) => deviceService.updateDevice(id, body), {
+      .put("/devices/:id", ({ params: { id }, body, user, request }) => deviceService.updateDevice(id, body, {
+        type: "ADMIN", id: user.id, correlationId: requestCorrelationId(request),
+      }), {
         body: t.Object({
           name: t.Optional(t.String({ minLength: 1, maxLength: 120 })),
           roomId: t.Optional(t.Nullable(t.String())),
         }),
       })
-      .post("/devices/:id/rotate-key", ({ params: { id } }) => deviceService.rotateDeviceKey(id))
-      .post("/devices/:id/revoke", ({ params: { id } }) => deviceService.revokeDevice(id))
-      .post("/devices/:id/reactivate", ({ params: { id } }) => deviceService.reactivateDevice(id))
-      .delete("/devices/:id", ({ params: { id } }) => deviceService.deleteDevice(id))
-      .post("/devices/:id/generate-pairing", ({ params: { id } }) => deviceService.generatePairingCode(id)),
+      .post("/devices/:id/rotate-key", ({ params: { id }, user, request }) => deviceService.rotateDeviceKey(id, {
+        type: "ADMIN", id: user.id, correlationId: requestCorrelationId(request),
+      }))
+      .post("/devices/:id/revoke", ({ params: { id }, user, request }) => deviceService.revokeDevice(id, {
+        type: "ADMIN", id: user.id, correlationId: requestCorrelationId(request),
+      }))
+      .post("/devices/:id/reactivate", ({ params: { id }, user, request }) => deviceService.reactivateDevice(id, {
+        type: "ADMIN", id: user.id, correlationId: requestCorrelationId(request),
+      }))
+      .delete("/devices/:id", ({ params: { id }, user, request }) => deviceService.deleteDevice(id, {
+        type: "ADMIN", id: user.id, correlationId: requestCorrelationId(request),
+      }))
+      .post("/devices/:id/generate-pairing", ({ params: { id }, user, request }) =>
+        deviceService.generatePairingCode(id, {
+          type: "ADMIN", id: user.id, correlationId: requestCorrelationId(request),
+        })),
   )
   .post("/devices/pair", async ({ body, status, request, set }) => {
     const ipLimit = await isRateLimited("device-pair-ip", clientIp(request), 10, 300);
@@ -65,7 +77,7 @@ export const deviceRoutes = new Elysia()
       return status(429, { error: "Too many pairing attempts. Please try again later." });
     }
     try {
-      return await deviceService.pairDevice(body.code);
+      return await deviceService.pairDevice(body.code, requestCorrelationId(request));
     } catch (error) {
       return status(400, { error: error instanceof Error ? error.message : "Pairing failed" });
     }
@@ -103,7 +115,7 @@ export const deviceRoutes = new Elysia()
       return status(429, { message: "Too many scan attempts" });
     }
     try {
-      return await deviceService.scanQr(device, body.qrToken, correlationId(request));
+      return await deviceService.scanQr(device, body.qrToken, requestCorrelationId(request));
     } catch (error) {
       return status(400, {
         message: error instanceof Error ? error.message : "Check-in failed",
@@ -132,7 +144,7 @@ export const deviceRoutes = new Elysia()
     try {
       const booking = await deviceService.createWalkIn(
         { ...device, roomId: device.roomId },
-        { ...body, correlationId: correlationId(request) },
+        { ...body, correlationId: requestCorrelationId(request) },
       );
       return { booking, status: booking.status };
     } catch (error) {

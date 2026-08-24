@@ -10,6 +10,7 @@ import {
 import { CheckInPolicyError } from "../check-in/check-in.errors";
 import { generateOpaqueToken, hashOpaqueToken } from "../lib/opaque-token";
 import { NotificationService } from "../notification/notification.service";
+import { AuditService } from "../audit/audit.service";
 
 type BookingStatus = "PENDING" | "CONFIRMED" | "CHECKED_IN" | "COMPLETED" | "CANCELLED" | "REJECTED" | "EXPIRED";
 type BookingActorType = "USER" | "ADMIN" | "DEVICE" | "SYSTEM";
@@ -60,6 +61,8 @@ function withoutQrTokenHash<T extends { qrTokenHash: string | null }>(booking: T
 }
 
 export class BookingService {
+  private readonly audit = new AuditService();
+
   constructor(
     private readonly prisma: PrismaClient,
     private readonly policy = new BookingPolicyService(),
@@ -177,12 +180,63 @@ export class BookingService {
       include: {
         room: true,
         user: { select: { name: true, email: true, image: true } },
-        events: { orderBy: { createdAt: "asc" } },
       },
     });
     if (!booking) throw new Error("Booking not found");
     if (role !== "adminRole" && booking.userId !== userId) throw new Error("Unauthorized");
     return { ...withoutQrTokenHash(booking), checkInWindow: this.checkInPolicy.getWindow(booking.startTime) };
+  }
+
+  async getBookingTimeline(id: string, role: string) {
+    if (role !== "adminRole") throw new Error("Unauthorized");
+    const booking = await this.prisma.booking.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+    if (!booking) throw new Error("Booking not found");
+    const [audits, bookingEvents] = await Promise.all([
+      this.prisma.auditLog.findMany({
+        where: { bookingId: id },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        take: 200,
+        select: {
+          id: true,
+          sourceEventId: true,
+          actorType: true,
+          actorId: true,
+          eventType: true,
+          previousStatus: true,
+          newStatus: true,
+          metadata: true,
+          correlationId: true,
+          createdAt: true,
+        },
+      }),
+      this.prisma.bookingEvent.findMany({
+        where: { bookingId: id },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        take: 200,
+      }),
+    ]);
+    const auditedEventIds = new Set(audits.map(({ sourceEventId }) => sourceEventId).filter(Boolean));
+    const legacyEvents = bookingEvents
+      .filter((event) => !auditedEventIds.has(event.id))
+      .map((event) => ({
+        id: `booking-event:${event.id}`,
+        sourceEventId: event.id,
+        actorType: event.actorType,
+        actorId: event.actorId,
+        eventType: event.eventType,
+        previousStatus: event.previousStatus,
+        newStatus: event.newStatus,
+        metadata: event.metadata,
+        correlationId: event.correlationId,
+        createdAt: event.createdAt,
+      }));
+    return [...audits, ...legacyEvents]
+      .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime() || left.id.localeCompare(right.id))
+      .slice(0, 200)
+      .map(({ sourceEventId: _sourceEventId, ...event }) => event);
   }
 
   async cancelBooking(id: string, userId: string, role: string, cancelReason?: string, correlationId?: string) {
@@ -197,7 +251,11 @@ export class BookingService {
       { cancelledAt: new Date(), cancelReason },
       cancelReason ? { reason: cancelReason } : undefined,
     );
-    await this.promoteWaitlist(booking.roomId, booking.startTime, booking.endTime);
+    await this.promoteWaitlist(booking.roomId, booking.startTime, booking.endTime, {
+      type: "SYSTEM",
+      correlationId,
+      metadata: { source: "booking-release", triggerBookingId: booking.id },
+    });
     return updated;
   }
 
@@ -221,7 +279,11 @@ export class BookingService {
       { reason },
     );
     await this.notifications.safelyEnqueueBooking("BOOKING_REJECTED", updated.id);
-    await this.promoteWaitlist(updated.roomId, updated.startTime, updated.endTime);
+    await this.promoteWaitlist(updated.roomId, updated.startTime, updated.endTime, {
+      type: "SYSTEM",
+      correlationId,
+      metadata: { source: "booking-release", triggerBookingId: updated.id },
+    });
     return updated;
   }
 
@@ -235,26 +297,40 @@ export class BookingService {
     return { success: true };
   }
 
-  async generateQr(id: string, userId: string, role: string, now = new Date()) {
-    const booking = await this.prisma.booking.findUnique({
-      where: { id },
-      include: { room: { select: { name: true } } },
-    });
-    if (!booking) throw new Error("Booking not found");
-    if (role !== "adminRole" && booking.userId !== userId) throw new Error("Unauthorized");
-    this.checkInPolicy.assertCanGenerateQr(booking, now);
-
+  async generateQr(id: string, userId: string, role: string, now = new Date(), correlationId?: string) {
     const qrToken = generateOpaqueToken("qr_");
     const qrTokenHash = hashOpaqueToken(qrToken);
-    const qrExpiresAt = this.checkInPolicy.qrExpiry(booking.startTime, now);
-    const updated = await this.prisma.booking.updateMany({
-      where: { id, status: "CONFIRMED" },
-      data: { qrTokenHash, qrExpiresAt },
+    return this.prisma.$transaction(async (tx) => {
+      const booking = await tx.booking.findUnique({
+        where: { id },
+        include: { room: { select: { name: true } } },
+      });
+      if (!booking) throw new Error("Booking not found");
+      if (role !== "adminRole" && booking.userId !== userId) throw new Error("Unauthorized");
+      this.checkInPolicy.assertCanGenerateQr(booking, now);
+
+      const qrExpiresAt = this.checkInPolicy.qrExpiry(booking.startTime, now);
+      const updated = await tx.booking.updateMany({
+        where: { id, status: "CONFIRMED" },
+        data: { qrTokenHash, qrExpiresAt },
+      });
+      if (updated.count !== 1) {
+        throw new CheckInPolicyError("BOOKING_NOT_CONFIRMED", "Booking status changed before QR generation");
+      }
+      await this.audit.record(tx, {
+        actor: this.userActor(userId, role, correlationId),
+        targetType: "BOOKING",
+        targetId: id,
+        bookingId: id,
+        roomId: booking.roomId,
+        eventType: "QR_ISSUED",
+        previousStatus: booking.status,
+        newStatus: booking.status,
+        metadata: { expiresAt: qrExpiresAt.toISOString() },
+        createdAt: now,
+      });
+      return { qrToken, expiresAt: qrExpiresAt, roomName: booking.room.name };
     });
-    if (updated.count !== 1) {
-      throw new CheckInPolicyError("BOOKING_NOT_CONFIRMED", "Booking status changed before QR generation");
-    }
-    return { qrToken, expiresAt: qrExpiresAt, roomName: booking.room.name };
   }
 
   async checkInByDevice(
@@ -419,7 +495,7 @@ export class BookingService {
     return this.transitionBooking(id, "COMPLETED", actor, { checkedOutAt: new Date() });
   }
 
-  async expireDueBookings(now = new Date()) {
+  async expireDueBookings(now = new Date(), actor: BookingActor = { type: "SYSTEM" }) {
     const due = await this.prisma.booking.findMany({
       where: { status: "CONFIRMED", startTime: { lt: new Date(now.getTime() - CHECK_IN_LATE_MINUTES * 60_000) } },
       select: { id: true },
@@ -428,7 +504,7 @@ export class BookingService {
     let count = 0;
     for (const booking of due) {
       try {
-        await this.transitionBooking(booking.id, "EXPIRED", { type: "SYSTEM" });
+        await this.transitionBooking(booking.id, "EXPIRED", actor);
         count++;
       } catch (error) {
         if (!(error instanceof BookingPolicyError && error.code === "INVALID_STATE_TRANSITION")) throw error;
@@ -437,7 +513,7 @@ export class BookingService {
     return count;
   }
 
-  async completeDueBookings(now = new Date()) {
+  async completeDueBookings(now = new Date(), actor: BookingActor = { type: "SYSTEM" }) {
     const due = await this.prisma.booking.findMany({
       where: { status: "CHECKED_IN", endTime: { lt: now } },
       select: { id: true },
@@ -446,7 +522,7 @@ export class BookingService {
     let count = 0;
     for (const booking of due) {
       try {
-        await this.checkOut(booking.id, { type: "SYSTEM" });
+        await this.checkOut(booking.id, actor);
         count++;
       } catch (error) {
         if (!(error instanceof BookingPolicyError && error.code === "INVALID_STATE_TRANSITION")) throw error;
@@ -474,6 +550,7 @@ export class BookingService {
     attendees: number;
     purpose?: string;
     userRole?: string;
+    correlationId?: string;
   }) {
     return withSerializableRetry(this.prisma, async (tx) => {
       const context = await this.policy.validateCreate(tx, { ...data, allowRoomConflict: true });
@@ -485,7 +562,7 @@ export class BookingService {
       });
       if (existing) throw new Error("Already on waitlist for this slot");
 
-      return tx.waitlistEntry.create({
+      const entry = await tx.waitlistEntry.create({
         data: {
           userId: data.userId,
           roomId: data.roomId,
@@ -496,15 +573,45 @@ export class BookingService {
         },
         include: { room: { select: { name: true, floor: true } } },
       });
+      await this.audit.record(tx, {
+        actor: this.userActor(data.userId, data.userRole, data.correlationId),
+        targetType: "WAITLIST",
+        targetId: entry.id,
+        roomId: entry.roomId,
+        eventType: "WAITLIST_JOINED",
+        newStatus: "WAITING",
+        metadata: {
+          startTime: entry.startTime.toISOString(),
+          endTime: entry.endTime.toISOString(),
+          attendees: entry.attendees,
+        },
+      });
+      return entry;
     });
   }
 
-  async leaveWaitlist(id: string, userId: string) {
-    const entry = await this.prisma.waitlistEntry.findUnique({ where: { id } });
-    if (!entry) throw new Error("Waitlist entry not found");
-    if (entry.userId !== userId) throw new Error("Unauthorized");
-    if (entry.status !== "WAITING") throw new Error("Cannot cancel a non-waiting entry");
-    return this.prisma.waitlistEntry.update({ where: { id }, data: { status: "CANCELLED" } });
+  async leaveWaitlist(id: string, userId: string, correlationId?: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const entry = await tx.waitlistEntry.findUnique({ where: { id } });
+      if (!entry) throw new Error("Waitlist entry not found");
+      if (entry.userId !== userId) throw new Error("Unauthorized");
+      if (entry.status !== "WAITING") throw new Error("Cannot cancel a non-waiting entry");
+      const updated = await tx.waitlistEntry.updateMany({
+        where: { id, status: "WAITING" },
+        data: { status: "CANCELLED" },
+      });
+      if (updated.count !== 1) throw new Error("Waitlist status changed concurrently");
+      await this.audit.record(tx, {
+        actor: { type: "USER", id: userId, correlationId },
+        targetType: "WAITLIST",
+        targetId: id,
+        roomId: entry.roomId,
+        eventType: "WAITLIST_CANCELLED",
+        previousStatus: "WAITING",
+        newStatus: "CANCELLED",
+      });
+      return tx.waitlistEntry.findUniqueOrThrow({ where: { id } });
+    });
   }
 
   async getUserWaitlist(userId: string) {
@@ -515,65 +622,141 @@ export class BookingService {
     });
   }
 
-  private async promoteWaitlist(roomId: string, startTime: Date, endTime: Date) {
-    let promoted: any;
-    try {
-      promoted = await withSerializableRetry(this.prisma, async (tx) => {
-        const entry = await tx.waitlistEntry.findFirst({
-          where: { roomId, startTime, endTime, status: "WAITING" },
-          orderBy: { createdAt: "asc" },
-          include: {
-            user: { select: { name: true, email: true, plan: true, role: true } },
-            room: { select: { name: true, floor: true } },
-          },
-        });
-        if (!entry) return null;
+  async promoteDueWaitlist(now = new Date(), actor: BookingActor = { type: "SYSTEM" }) {
+    const expiredEntries = await this.prisma.waitlistEntry.findMany({
+      where: { status: "WAITING", startTime: { lte: now } },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, roomId: true },
+      take: 200,
+    });
+    let expired = 0;
+    for (const entry of expiredEntries) {
+      expired += await this.expireWaitlistEntry(entry.id, entry.roomId, actor, now);
+    }
 
-        const claimed = await tx.waitlistEntry.updateMany({
-          where: { id: entry.id, status: "WAITING" },
-          data: { status: "PROMOTED", notifiedAt: new Date() },
-        });
-        if (claimed.count !== 1) return null;
+    const candidates = await this.prisma.waitlistEntry.findMany({
+      where: { status: "WAITING", startTime: { gt: now } },
+      orderBy: { createdAt: "asc" },
+      select: { roomId: true, startTime: true, endTime: true },
+      distinct: ["roomId", "startTime", "endTime"],
+      take: 200,
+    });
+    let promoted = 0;
+    for (const candidate of candidates) {
+      if (await this.promoteWaitlist(candidate.roomId, candidate.startTime, candidate.endTime, actor)) {
+        promoted += 1;
+      }
+    }
+    return { expired, promoted, slotsChecked: candidates.length };
+  }
 
-        await this.policy.validateCreate(tx, {
-          userId: entry.userId,
-          roomId,
-          startTime,
-          endTime,
-          attendees: entry.attendees,
-          userRole: entry.user.role ?? "userRole",
-        });
+  private async promoteWaitlist(
+    roomId: string,
+    startTime: Date,
+    endTime: Date,
+    actor: BookingActor = { type: "SYSTEM", metadata: { source: "waitlist" } },
+  ) {
+    const candidates = await this.prisma.waitlistEntry.findMany({
+      where: { roomId, startTime, endTime, status: "WAITING" },
+      orderBy: { createdAt: "asc" },
+      select: { id: true },
+      take: 20,
+    });
 
-        const booking = await tx.booking.create({
-          data: {
+    for (const candidate of candidates) {
+      let promoted: { bookingId: string } | null = null;
+      try {
+        promoted = await withSerializableRetry(this.prisma, async (tx) => {
+          const entry = await tx.waitlistEntry.findUnique({
+            where: { id: candidate.id },
+            include: { user: { select: { role: true } } },
+          });
+          if (!entry || entry.status !== "WAITING") return null;
+
+          await this.policy.validateCreate(tx, {
             userId: entry.userId,
             roomId,
             startTime,
             endTime,
             attendees: entry.attendees,
-            purpose: entry.purpose,
-            status: "CONFIRMED",
-            approvedAt: new Date(),
-          },
-        });
-        await this.recordEvent(tx, {
-          bookingId: booking.id,
-          roomId,
-          actor: { type: "SYSTEM", metadata: { source: "waitlist" } },
-          eventType: "CREATED",
-          previousStatus: null,
-          newStatus: "CONFIRMED",
-          metadata: { waitlistEntryId: entry.id, autoConfirmed: true },
-        });
-        return { entry, bookingId: booking.id };
-      });
-    } catch (error) {
-      if (error instanceof BookingPolicyError || isExclusionConstraintError(error)) return;
-      throw error;
-    }
-    if (!promoted) return;
+            userRole: entry.user.role ?? "userRole",
+          });
 
-    await this.notifications.safelyEnqueueBooking("WAITLIST_PROMOTED", promoted.bookingId);
+          const claimed = await tx.waitlistEntry.updateMany({
+            where: { id: entry.id, status: "WAITING" },
+            data: { status: "PROMOTED", notifiedAt: new Date() },
+          });
+          if (claimed.count !== 1) return null;
+
+          const booking = await tx.booking.create({
+            data: {
+              userId: entry.userId,
+              roomId,
+              startTime,
+              endTime,
+              attendees: entry.attendees,
+              purpose: entry.purpose,
+              status: "CONFIRMED",
+              approvedAt: new Date(),
+            },
+          });
+          await this.audit.record(tx, {
+            actor,
+            targetType: "WAITLIST",
+            targetId: entry.id,
+            bookingId: booking.id,
+            roomId,
+            eventType: "WAITLIST_PROMOTED",
+            previousStatus: "WAITING",
+            newStatus: "PROMOTED",
+          });
+          await this.recordEvent(tx, {
+            bookingId: booking.id,
+            roomId,
+            actor: { ...actor, metadata: { ...(actor.metadata ?? {}), source: "waitlist" } },
+            eventType: "CREATED",
+            previousStatus: null,
+            newStatus: "CONFIRMED",
+            metadata: { waitlistEntryId: entry.id, autoConfirmed: true },
+          });
+          return { bookingId: booking.id };
+        });
+      } catch (error) {
+        if (isExclusionConstraintError(error)) return false;
+        if (error instanceof BookingPolicyError) {
+          if (["ROOM_OVERLAP", "ROOM_INACTIVE", "ROOM_CLOSED", "OUTSIDE_OPENING_HOURS"].includes(error.code)) {
+            return false;
+          }
+          continue;
+        }
+        throw error;
+      }
+      if (!promoted) continue;
+      await this.notifications.safelyEnqueueBooking("WAITLIST_PROMOTED", promoted.bookingId);
+      return true;
+    }
+    return false;
+  }
+
+  private async expireWaitlistEntry(id: string, roomId: string, actor: BookingActor, now: Date) {
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.waitlistEntry.updateMany({
+        where: { id, status: "WAITING", startTime: { lte: now } },
+        data: { status: "EXPIRED" },
+      });
+      if (updated.count !== 1) return 0;
+      await this.audit.record(tx, {
+        actor,
+        targetType: "WAITLIST",
+        targetId: id,
+        roomId,
+        eventType: "WAITLIST_EXPIRED",
+        previousStatus: "WAITING",
+        newStatus: "EXPIRED",
+        createdAt: now,
+      });
+      return 1;
+    });
   }
 
   private async transitionBooking(
@@ -635,7 +818,7 @@ export class BookingService {
     },
   ) {
     const metadata = { ...(event.actor.metadata ?? {}), ...(event.metadata ?? {}) };
-    await tx.bookingEvent.create({
+    const bookingEvent = await tx.bookingEvent.create({
       data: {
         bookingId: event.bookingId,
         roomId: event.roomId,
@@ -647,6 +830,19 @@ export class BookingService {
         correlationId: event.actor.correlationId,
         metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
       },
+    });
+    await this.audit.record(tx, {
+      actor: event.actor,
+      targetType: "BOOKING",
+      targetId: event.bookingId,
+      sourceEventId: bookingEvent.id,
+      bookingId: event.bookingId,
+      roomId: event.roomId,
+      eventType: event.eventType,
+      previousStatus: event.previousStatus,
+      newStatus: event.newStatus,
+      metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+      createdAt: bookingEvent.createdAt,
     });
   }
 

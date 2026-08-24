@@ -102,6 +102,19 @@ export const adminBookingsQuery = (params?: { status?: string; page?: number; se
   },
 });
 
+export const bookingTimelineQuery = (id: string | null) => ({
+  queryKey: ["admin", "bookings", id, "timeline"],
+  enabled: Boolean(id),
+  queryFn: async () => {
+    if (!id) return [] as BookingTimelineEvent[];
+    const response = await fetch(`/api/bookings/${encodeURIComponent(id)}/timeline`, {
+      credentials: "include",
+    });
+    if (!response.ok) throw new Error("Failed to load booking timeline");
+    return response.json() as Promise<BookingTimelineEvent[]>;
+  },
+});
+
 export const adminUsersQuery = (params?: { search?: string; role?: string; page?: number }) => ({
   queryKey: ["admin", "users", params],
   queryFn: async () => {
@@ -210,6 +223,18 @@ export type BookingListResponse = {
   totalPages: number;
 };
 
+export type BookingTimelineEvent = {
+  id: string;
+  actorType: "USER" | "ADMIN" | "DEVICE" | "SYSTEM";
+  actorId?: string | null;
+  eventType: string;
+  previousStatus?: string | null;
+  newStatus?: string | null;
+  metadata?: Record<string, unknown> | null;
+  correlationId?: string | null;
+  createdAt: string;
+};
+
 export type UserListResponse = {
   users: AdminUser[];
   total: number;
@@ -255,7 +280,7 @@ export type WaitlistEntry = {
   endTime: string;
   attendees: number;
   purpose?: string | null;
-  status: "WAITING" | "PROMOTED" | "CANCELLED";
+  status: "WAITING" | "PROMOTED" | "CANCELLED" | "EXPIRED";
   createdAt: string;
 };
 
