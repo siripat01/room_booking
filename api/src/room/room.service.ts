@@ -7,6 +7,7 @@ import {
     bangkokLocalDateTimeToInstant,
     getBangkokDateTime,
 } from "../lib/bangkok-time";
+import { DEFAULT_ROOM_TIME_SLOTS } from "./room-defaults";
 
 export class RoomService {
     private readonly audit = new AuditService();
@@ -67,6 +68,12 @@ export class RoomService {
         try {
             return await this.prisma.$transaction(async (tx) => {
                 const room = await tx.room.create({ data });
+                await tx.timeSlot.createMany({
+                    data: DEFAULT_ROOM_TIME_SLOTS.map((slot) => ({
+                        roomId: room.id,
+                        ...slot,
+                    })),
+                });
                 await this.audit.record(tx, {
                     actor,
                     targetType: "ROOM",
@@ -74,7 +81,10 @@ export class RoomService {
                     roomId: room.id,
                     eventType: "ROOM_CREATED",
                     newStatus: room.isActive ? "ACTIVE" : "INACTIVE",
-                    metadata: { room: safeRoomAuditState(room) },
+                    metadata: {
+                        room: safeRoomAuditState(room),
+                        defaultTimeSlots: DEFAULT_ROOM_TIME_SLOTS.map((slot) => ({ ...slot })),
+                    },
                 });
                 return room;
             });
