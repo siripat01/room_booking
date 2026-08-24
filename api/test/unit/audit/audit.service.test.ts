@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { sanitizeAuditMetadata } from "./audit.service";
+import { sanitizeAuditMetadata } from "../../../src/audit/audit.service";
 
 test("audit metadata removes credentials recursively while retaining safe context", () => {
   const metadata = sanitizeAuditMetadata({

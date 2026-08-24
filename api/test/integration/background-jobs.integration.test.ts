@@ -1,11 +1,11 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient, type BackgroundJobType } from "../generated/prisma/client";
-import { getBangkokDateTime } from "../src/lib/bangkok-time";
-import { BackgroundJobScheduler } from "../src/jobs/background-job.scheduler";
-import { BackgroundJobWorker } from "../src/jobs/background-job.worker";
-import { BackgroundJobHandlers } from "../src/jobs/background-job.handlers";
-import { BookingService } from "../src/booking/booking.service";
+import { PrismaClient, type BackgroundJobType } from "../../generated/prisma/client";
+import { getBangkokDateTime } from "../../src/lib/bangkok-time";
+import { BackgroundJobScheduler } from "../../src/jobs/background-job.scheduler";
+import { BackgroundJobWorker } from "../../src/jobs/background-job.worker";
+import { BackgroundJobHandlers } from "../../src/jobs/background-job.handlers";
+import { BookingService } from "../../src/booking/booking.service";
 
 const connectionString = process.env.TEST_DATABASE_URL;
 const integrationTest = connectionString ? test : test.skip;

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { requestCorrelationId } from "./request-correlation";
+import { requestCorrelationId } from "../../../src/lib/request-correlation";
 
 describe("requestCorrelationId", () => {
   test("accepts a bounded safe request identifier", () => {

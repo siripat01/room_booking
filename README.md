@@ -26,8 +26,8 @@
 
 ### 3. CI/CD (GitHub Actions)
 - มีระบบ Workflow ตรวจสอบโค้ดอัตโนมัติเมื่อทำการ `push` หรือสร้าง `pull_request` ไปยังสาขา `main` และ `development`
-  - **Backend**: ตรวจสอบ Typescript ด้วย `tsc` และสร้าง Prisma Client
-  - **Frontend**: ตรวจสอบการ build ของโปรเจกต์ด้วย `pnpm run build`
+  - **Backend**: lint, migration validation, unit/integration tests, TypeScript, and Docker build
+  - **Frontend**: lint, component tests, TypeScript, and production build
 
 ---
 
@@ -255,15 +255,49 @@ tables, adds `EXPIRED` waitlist state, and backfills existing `BookingEvent` row
 into the generic audit timeline. The API also merges any event written by an older
 rolling-deployment instance that has not yet been mirrored into `AuditLog`.
 
+The Phase 5 migration creates `stripe_webhook_events`. The Stripe event ID is the
+primary key and is inserted in the same transaction as local plan changes, making
+concurrent webhook retries idempotent for RoomFlow database side effects.
+
+## Automated Quality and Operations (Phase 5)
+
+Both packages use Biome for linting and formatting. Correctness violations block
+CI, while selected legacy unused-import and accessibility findings remain visible
+as warnings for incremental cleanup. The frontend uses Vitest, Testing Library,
+and jsdom for critical component states.
+
+CI validates an empty PostgreSQL 17.6 database, migration status, backend unit and
+integration tests, HTTP RBAC, concurrent booking and Stripe webhook behavior,
+frontend component tests, TypeScript, the Vite build, and the production API
+Dockerfile. Provider delivery is disabled during automated tests.
+
+`GET /api/health` is a public database-readiness endpoint. Admins can inspect
+`GET /api/operations/jobs/health` for persisted background/notification queue
+counts, delayed work, retained failures, and stale processing locks. Thresholds
+are configured with `JOB_HEALTH_MAX_DUE_AGE_MS`,
+`JOB_HEALTH_BACKGROUND_FAILED_THRESHOLD`,
+`JOB_HEALTH_NOTIFICATION_FAILED_THRESHOLD`, and
+`JOB_HEALTH_LOG_INTERVAL_MS`.
+
 ## Tests
 
 ```bash
 cd api
-bun test
+bun run lint
+bun run test:unit
 
 # Requires an isolated database with all migrations applied
 TEST_DATABASE_URL=postgresql://user:password@localhost:5432/room_booking_test \
   bun run test:integration
+
+# Run every backend test directory
+bun test
+
+cd ../web
+pnpm run lint
+pnpm test
+pnpm exec tsc --noEmit
+pnpm run build
 ```
 
 Automated tests never require notification credentials or contact real providers.
@@ -273,14 +307,19 @@ single-use behavior, audited walk-ins, concurrent database rate limiting,
 notification idempotency, multi-worker claiming, retries, duplicate reminder
 prevention, LINE link-code consumption, multi-instance scheduled-job claiming,
 background-job retry and retention, booking ownership/timeline RBAC, and scheduled
-waitlist promotion with correlated audit.
+waitlist promotion with correlated audit. Phase 5 adds HTTP route-level ownership
+tests, concurrent Stripe webhook idempotency tests, job-health unit tests, and
+frontend booking-timeline and destructive-confirmation component tests.
 
 ## Known Limitations and Roadmap
 
-- A cross-job operational dashboard and alerting remain future improvements;
-  background and notification terminal records already have retention.
+- Job health is available through an admin API and structured warnings, but an
+  external metrics/alert sink and dedicated operational dashboard remain future
+  improvements.
 - Device online/offline is derived from heartbeat freshness and is not written as
   a high-volume audit event on every heartbeat.
-- Full API/frontend/E2E quality gates are Phase 5.
+- The full Playwright booking-to-completion E2E remains optional; unit,
+  PostgreSQL integration, component, lint, type-check, migration, build, and
+  Docker gates are implemented.
 - Recurring bookings, SSE room status, and smart alternatives are Phase 6.
 - Smart occupancy remains optional and feature-flagged for a later project.

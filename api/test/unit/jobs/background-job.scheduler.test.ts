@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { BackgroundJobScheduler } from "./background-job.scheduler";
+import { BackgroundJobScheduler } from "../../../src/jobs/background-job.scheduler";
 
 test("retention cleanup uses one hourly key when the scheduler interval is sub-minute", async () => {
   const previous = process.env.BACKGROUND_JOB_SCHEDULE_INTERVAL_MS;

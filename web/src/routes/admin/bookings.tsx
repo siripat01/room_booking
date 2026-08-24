@@ -8,7 +8,6 @@ import {
   type Booking,
 } from "../../lib/queries";
 import { app } from "../../lib/api";
-import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
@@ -18,6 +17,7 @@ import {
 } from "../../components/ui/dialog";
 import { CalendarDays, Clock, Users, CheckCircle2, XCircle, Loader2, Search, ChevronLeft, ChevronRight, History } from "lucide-react";
 import { LoadingCentered } from "../../components/LoadingSpinner";
+import { BookingTimelinePanel } from "../../components/bookings/BookingTimelinePanel";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin/bookings")({
@@ -294,48 +294,11 @@ function AdminBookingsPage() {
               {timelineTarget?.room?.name ?? "Room"} · {timelineTarget?.user?.name ?? "User"}
             </p>
           </DialogHeader>
-          {timelineLoading ? (
-            <div className="py-10"><LoadingCentered /></div>
-          ) : timelineError ? (
-            <p className="py-8 text-center text-sm text-red-600">Unable to load the audit timeline.</p>
-          ) : timeline.length === 0 ? (
-            <p className="py-8 text-center text-sm text-muted-foreground">No audit events recorded.</p>
-          ) : (
-            <ol className="relative ml-2 border-l border-slate-200 space-y-6 py-2">
-              {timeline.map((event) => (
-                <li key={event.id} className="ml-5">
-                  <span className="absolute -left-1.5 mt-1.5 h-3 w-3 rounded-full border-2 border-white bg-blue-600" />
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-semibold text-sm text-slate-900">
-                      {event.eventType.replaceAll("_", " ")}
-                    </span>
-                    {event.newStatus && (
-                      <Badge variant="outline" className="text-[10px]">
-                        {event.previousStatus ? `${event.previousStatus} → ` : ""}{event.newStatus}
-                      </Badge>
-                    )}
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {new Date(event.createdAt).toLocaleString("en-GB", {
-                      timeZone: "Asia/Bangkok",
-                      dateStyle: "medium",
-                      timeStyle: "medium",
-                    })} · {event.actorType}{event.actorId ? ` (${event.actorId})` : ""}
-                  </p>
-                  {event.metadata && Object.keys(event.metadata).length > 0 && (
-                    <pre className="mt-2 overflow-x-auto rounded-md bg-slate-50 p-2 text-[11px] text-slate-600">
-                      {JSON.stringify(event.metadata, null, 2)}
-                    </pre>
-                  )}
-                  {event.correlationId && (
-                    <p className="mt-1 break-all font-mono text-[10px] text-slate-400">
-                      correlation: {event.correlationId}
-                    </p>
-                  )}
-                </li>
-              ))}
-            </ol>
-          )}
+          <BookingTimelinePanel
+            events={timeline}
+            isLoading={timelineLoading}
+            isError={timelineError}
+          />
         </DialogContent>
       </Dialog>
     </div>

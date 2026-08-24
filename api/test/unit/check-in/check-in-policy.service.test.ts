@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { CheckInPolicyService, QR_TOKEN_TTL_MS } from "./check-in-policy.service";
+import { CheckInPolicyService, QR_TOKEN_TTL_MS } from "../../../src/check-in/check-in-policy.service";
 
 const policy = new CheckInPolicyService();
 const startTime = new Date("2026-08-20T03:00:00.000Z");

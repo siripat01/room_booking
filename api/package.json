@@ -2,9 +2,11 @@
   "name": "api",
   "version": "1.0.50",
   "scripts": {
-    "test": "bun test",
-    "test:unit": "bun test src",
-    "test:integration": "bun test test",
+    "lint": "biome lint --config-path=../biome.json src test scripts libs utils",
+    "format": "biome format --write --config-path=../biome.json src test scripts libs utils",
+    "test": "bun test test",
+    "test:unit": "bun test test/unit",
+    "test:integration": "bun test test/integration",
     "typecheck": "tsc -p tsconfig.json --noEmit --ignoreDeprecations 6.0",
     "dev": "bun run --watch src/index.ts",
     "start": "bun src/index.ts",
@@ -28,6 +30,7 @@
     "stripe": "^22.3.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.9",
     "@types/node-cron": "^3.0.11",
     "@types/pg": "^8.20.0",
     "bun-types": "1.3.14",

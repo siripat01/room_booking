@@ -1,9 +1,11 @@
-import Elysia, { t } from "elysia";
+import Elysia from "elysia";
 import { betterAuth } from "../middleware/auth.middleware";
 import { stripe, PRICE_ID } from "../lib/stripe";
 import prisma from "../../libs/db";
+import { StripeWebhookService } from "./stripe-webhook.service";
 
 const WEB_URL = process.env.WEB_URL ?? "http://localhost:5173";
+const stripeWebhooks = new StripeWebhookService(prisma);
 
 export const subscriptionRoutes = new Elysia()
     .use(betterAuth)
@@ -55,38 +57,6 @@ export const subscriptionRoutes = new Elysia()
             return status(400, { error: `Webhook Error: ${e.message}` });
         }
 
-        if (event.type === "checkout.session.completed") {
-            const session = event.data.object as any;
-            if (session.mode === "subscription" && session.customer) {
-                await prisma.user.updateMany({
-                    where: { stripeCustomerId: session.customer as string },
-                    data: { plan: "PRO", planExpiresAt: null },
-                });
-            }
-        } else if (event.type === "customer.subscription.updated") {
-            const sub = event.data.object as any;
-            const customerId = sub.customer as string;
-            const isActive = sub.status === "active" || sub.status === "trialing";
-            const cancelAtPeriodEnd = sub.cancel_at_period_end === true;
-            await prisma.user.updateMany({
-                where: { stripeCustomerId: customerId },
-                data: {
-                    plan: isActive ? "PRO" : "FREE",
-                    // เก็บวันหมดอายุถ้า user กด cancel (ยังใช้ Pro ได้จนครบ period)
-                    planExpiresAt: isActive && cancelAtPeriodEnd
-                        ? new Date(sub.current_period_end * 1000)
-                        : isActive
-                        ? null
-                        : new Date(sub.current_period_end * 1000),
-                },
-            });
-        } else if (event.type === "customer.subscription.deleted") {
-            const sub = event.data.object as any;
-            await prisma.user.updateMany({
-                where: { stripeCustomerId: sub.customer as string },
-                data: { plan: "FREE", planExpiresAt: null },
-            });
-        }
-
-        return { received: true };
+        const result = await stripeWebhooks.process(event);
+        return { received: true, duplicate: result.duplicate };
     }, { auth: false })

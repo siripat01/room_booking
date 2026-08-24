@@ -1,6 +1,6 @@
 import { createHmac } from "crypto";
 import { describe, expect, test } from "bun:test";
-import { verifyLineWebhookSignature } from "./line-webhook-signature";
+import { verifyLineWebhookSignature } from "../../../src/notification/line-webhook-signature";
 
 describe("LINE webhook signature", () => {
   const secret = "line-channel-secret";

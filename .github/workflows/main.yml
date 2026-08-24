@@ -74,6 +74,10 @@ jobs:
         working-directory: api
         run: bun run prisma generate
 
+      - name: Lint Backend
+        working-directory: api
+        run: bun run lint
+
       - name: Validate Prisma Schema
         working-directory: api
         run: bun run prisma validate
@@ -148,6 +152,14 @@ jobs:
       - name: Install Dependencies
         working-directory: web
         run: pnpm install --frozen-lockfile
+
+      - name: Lint Frontend
+        working-directory: web
+        run: pnpm run lint
+
+      - name: Run Frontend Component Tests
+        working-directory: web
+        run: pnpm test
 
       - name: Type Check Frontend
         working-directory: web
