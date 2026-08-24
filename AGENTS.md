@@ -237,6 +237,13 @@ Implementation is on `agent/high-value-features-phase6`.
 
 Migration: `20260824020000_booking_series_phase6`.
 
+Hotfix after the initial Phase 6 deployment: every `/devices/:id/*` route must
+use the same Elysia parameter name. The SSE route originally used `:deviceId`,
+which caused the production route trie to fail compilation. `createApp()` is now
+separate from process startup, a full route-graph unit test guards this invariant,
+and CI starts the production Docker image against migrated PostgreSQL before any
+deployment is allowed.
+
 ### Optional Flagship: Smart Occupancy — Not started and not required
 
 Keep this feature-flagged so booking works without hardware. Future work may add

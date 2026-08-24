@@ -25,10 +25,10 @@ export const realtimeRoutes = new Elysia()
         cursor: t.Optional(t.String()),
       }),
     })
-  .get("/devices/:deviceId/events", async ({ params, headers, request, query, status }) => {
+  .get("/devices/:id/events", async ({ params: { id }, headers, request, query, status }) => {
     const deviceKey = headers["x-device-key"];
     if (!deviceKey) return status(401);
-    const device = await devices.authenticateDevice(params.deviceId, deviceKey);
+    const device = await devices.authenticateDevice(id, deviceKey);
     if (!device?.roomId) return status(403);
     return realtime.stream(
       { roomId: device.roomId, deviceId: device.id },
