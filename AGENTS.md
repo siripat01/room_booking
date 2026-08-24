@@ -165,10 +165,9 @@ merge commit `ad49a4db`.
 
 Migration: `20260822000000_safe_jobs_and_audit_phase4`.
 
-### Phase 5: Automated Quality — Core scope implemented and locally validated
+### Phase 5: Automated Quality — Implemented and merged
 
-Implementation is on `agent/automated-quality-phase5`, based on the Phase 4
-commit.
+Phase 5 was merged into `main` through PR #82 at merge commit `cf0c74a5`.
 
 - Backend CI uses pinned PostgreSQL 17.6, applies all migrations to an empty
   database, validates migration status, and runs unit, integration, lint, and
@@ -215,9 +214,9 @@ User signs in
 -> booking completes
 ```
 
-### Phase 6: High-Value Features — Implemented and locally validated
+### Phase 6: High-Value Features — Implemented and merged
 
-Implementation is on `agent/high-value-features-phase6`.
+Phase 6 was merged into `main` through PR #83 at merge commit `fc8d692e`.
 
 - `BookingSeriesService` supports weekly preview, atomic creation, occurrence/
   future/whole-series edits, and occurrence/future/entire cancellation. Every
@@ -242,7 +241,9 @@ use the same Elysia parameter name. The SSE route originally used `:deviceId`,
 which caused the production route trie to fail compilation. `createApp()` is now
 separate from process startup, a full route-graph unit test guards this invariant,
 and CI starts the production Docker image against migrated PostgreSQL before any
-deployment is allowed.
+deployment is allowed. Commit `17eccc90` is pushed on
+`hotfix/elysia-route-compilation` and must be merged before considering the
+production incident resolved.
 
 ### Optional Flagship: Smart Occupancy — Not started and not required
 
@@ -260,10 +261,10 @@ no-show and cancellation rates, approval latency, average duration, capacity
 utilization, actual versus reserved use, device uptime, Bangkok peak hours, and
 room/floor/date-range breakdowns.
 
-The README documents Phases 1-5 and setup notes, but still needs the complete
-architecture diagram, full environment reference, demo and screenshot
-placeholders, and expanded trade-offs. Never claim unimplemented features as
-done.
+The README documents product scope, implemented phases, architecture, booking and
+QR flows, device security, local PostgreSQL development, environment variables,
+migrations, tests, CI/CD, demo placeholders, trade-offs, limitations, and roadmap.
+Keep it synchronized with implementation and never claim optional work as done.
 
 ## Development and Validation
 
@@ -376,6 +377,15 @@ During Phase 6 local validation on 2026-08-24:
 - The production API Docker image built successfully. The frontend build retains
   a known main-chunk size warning.
 
+During the route-compilation hotfix validation on 2026-08-24:
+
+- API unit tests passed 40/40 and PostgreSQL integration tests passed 28/28.
+- All 17 migrations applied to an empty PostgreSQL 17.6 database.
+- API/web type-checks, Biome lint, and the frontend production build passed.
+- The production API image built, ran its migration command, started without a
+  route-trie failure, and returned HTTP 200 with healthy database readiness.
+- The GitHub Actions workflow passed YAML parsing and actionlint 1.7.7.
+
 ## Working Rules for Future Sessions
 
 1. Inspect the repository and current branch before modifying it.
@@ -397,10 +407,10 @@ user-owned unless the user explicitly places them in scope.
 
 ## Recommended Next Session
 
-1. Review, commit, and push `agent/high-value-features-phase6` only with explicit
-   user authorization, then let CI revalidate migrations, tests, and Docker.
-2. Merge the room-time-slot hotfix before production validation so existing rooms
-   receive the backfilled weekday schedule.
+1. Merge `hotfix/elysia-route-compilation`, confirm all CI gates, and verify the
+   public Fly `/api/health` response before closing the production incident.
+2. Complete operational reporting metrics using booking time and explicit
+   `Asia/Bangkok` date boundaries.
 3. Keep optional Smart Occupancy out of scope unless the user explicitly starts it.
 4. Configure a test LINE Messaging channel and signed webhook only for manual
    staging verification; never use real provider credentials in automated tests.

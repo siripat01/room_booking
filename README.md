@@ -1,361 +1,366 @@
-# Room Booking System (ระบบจองห้องประชุม)
+# RoomFlow
 
-โปรเจกต์นี้เป็นระบบจองห้องประชุม (Room Booking System) ที่ออกแบบมาเป็น Monorepo โดยแบ่งส่วนการทำงานออกเป็น **Backend (API)** และ **Frontend (Web)**
+RoomFlow is a room and physical-resource management platform for schools and
+organizations. It combines room discovery, policy-enforced booking, approvals,
+waitlists, QR check-in, paired room kiosks, notifications, operational jobs,
+audit history, reports, and an existing individual Free/Pro subscription flow.
 
----
+The repository is a domain-oriented modular monolith. The API and web client are
+deployed independently, while PostgreSQL remains the source of truth for booking
+correctness, concurrency control, durable jobs, and audit history.
 
-## 🛠️ Tech Stack & Architecture
+## Product scope
 
-### 1. Backend (โฟลเดอร์ `/api`)
-ระบบหลังบ้านพัฒนาด้วยเทคโนโลยีที่เน้นประสิทธิภาพและความเร็วในการทำงานสูง:
-- **Runtime**: [Bun](https://bun.sh/)
-- **Framework**: [Elysia.js](https://elysiajs.com/) (Fast, type-friendly web framework)
-- **Database ORM**: [Prisma](https://www.prisma.io/) (PostgreSQL)
-- **Authentication**: [Better Auth](https://www.better-auth.com/)
-- **Documentation**: OpenAPI Spec / Swagger
-- **Deployment**: รองรับ Docker และ Fly.io (`fly.toml`)
+The primary product is an internal school or organization platform. The existing
+individual Free/Pro and Stripe behavior is retained for compatibility and is
+isolated from core booking correctness.
 
-### 2. Frontend (โฟลเดอร์ `/web`)
-ระบบหน้าบ้านพัฒนาด้วยเว็บแอปพลิเคชันยุคใหม่:
-- **Build Tool**: [Vite](https://vitejs.dev/)
-- **Framework**: [React](https://react.dev/) + [TanStack Start](https://tanstack.com/router/latest/docs/start/overview) (Full-stack routing & SSR capability)
-- **Routing**: [TanStack Router](https://tanstack.com/router)
-- **Data Fetching**: [TanStack Query (React Query)](https://tanstack.com/query)
-- **Styling**: [TailwindCSS v4](https://tailwindcss.com/)
-- **Package Manager**: [pnpm](https://pnpm.io/)
+This creates a known positioning mismatch:
 
-### 3. CI/CD (GitHub Actions)
-- มีระบบ Workflow ตรวจสอบโค้ดอัตโนมัติเมื่อทำการ `push` หรือสร้าง `pull_request` ไปยังสาขา `main` และ `development`
-  - **Backend**: lint, migration validation, unit/integration tests, TypeScript, and Docker build
-  - **Frontend**: lint, component tests, TypeScript, and production build
+- Primary direction: internal organization resource management.
+- Existing billing model: individual SaaS subscriptions.
 
----
+RoomFlow is not currently multi-tenant. A future SaaS repositioning should add
+organizations, tenant isolation, membership, and organization-level billing as a
+separate project. It should not extend the current individual billing model into
+the booking domain.
 
-## 🚀 Getting Started (เริ่มต้นใช้งาน)
+## Implemented features
 
-ก่อนเริ่มต้นตรวจสอบให้มั่นใจว่าเครื่องของคุณมี:
-- [Bun](https://bun.sh/) ติดตั้งอยู่สำหรับรัน API
-- [Node.js](https://nodejs.org/) & [pnpm](https://pnpm.io/) ติดตั้งอยู่สำหรับรัน Web Frontend
+| Area | Status | Highlights |
+| --- | --- | --- |
+| Phase 1 — Booking correctness | Implemented | Shared booking policy, Bangkok calendar rules, state machine, PostgreSQL overlap constraints, history |
+| Phase 2 — QR, kiosk, and device security | Implemented | Room-bound single-use QR, hashed device credentials, secure pairing, audited walk-ins, database rate limits |
+| Phase 3 — Notifications | Implemented | Resend email, LINE Messaging API, preferences, transactional outbox, retries and idempotency |
+| Phase 4 — Background jobs and audit | Implemented | PostgreSQL job queue, `SKIP LOCKED` workers, stale-lock recovery, audit timeline |
+| Phase 5 — Automated quality | Implemented | Unit, PostgreSQL integration, component, migration, route-compilation, Docker startup, and build gates |
+| Phase 6 — High-value features | Implemented | Pro weekly recurrence, SSE room status, deterministic smart alternatives |
+| Smart occupancy | Not implemented | Optional future feature; normal booking does not require hardware |
 
-### 1. ตั้งค่าและรัน Backend (API)
-1. เข้าไปยังโฟลเดอร์ `api`:
-   ```bash
-   cd api
-   ```
-2. ติดตั้ง Dependencies:
-   ```bash
-   bun install
-   ```
-3. คัดลอกและตั้งค่า Environment Variables (ถ้ายังไม่มี):
-   ```bash
-   cp .env.example .env   # ตั้งค่า DATABASE_URL และ AUTH variables ใน .env
-   ```
-4. สร้างโมเดลฐานข้อมูลของ Prisma:
-   ```bash
-   bun --bun run prisma generate
-   ```
-5. รันเซิร์ฟเวอร์แบบ Development:
-   ```bash
-   bun run dev
-   ```
-   *เซิร์ฟเวอร์หลังบ้านจะทำงานที่: `http://localhost:3000`*
+Additional implemented workflows include room opening hours and closures,
+role-based room access, admin approval, waitlist promotion, reminders, Stripe
+webhook deduplication, device revocation and rotation, and administrative reports.
 
----
+## Architecture
 
-### 2. ตั้งค่าและรัน Frontend (Web)
-1. เข้าไปยังโฟลเดอร์ `web`:
-   ```bash
-   cd web
-   ```
-2. ติดตั้ง Dependencies:
-   ```bash
-   pnpm install
-   ```
-3. รันเซิร์ฟเวอร์หน้าบ้านแบบ Development:
-   ```bash
-   pnpm run dev
-   ```
-   *หน้าเว็บจะทำงานที่: `http://localhost:3001`*
-
----
-
-## ⚙️ CI/CD Workflow (GitHub Actions)
-
-`.github/workflows/main.yml` is the merge and deployment quality gate. Backend CI
-starts an isolated PostgreSQL 17.6 service, applies the complete migration history
-to an empty database, checks migration status, and runs unit, PostgreSQL integration,
-and type-check suites with provider delivery disabled. Frontend CI type-checks and
-builds the Vite application. A separate Buildx job verifies the production API
-Dockerfile before Fly deployment is allowed. Dependency caches use the actual
-`api/bun.lock` and `web/pnpm-lock.yaml` files.
-
-CI also compiles the complete Elysia route graph, migrates a fresh PostgreSQL
-database from the production image, starts that exact image, and requires a
-healthy `/api/health` response. This catches route-composition and startup errors
-that static type-checking or a Docker build alone cannot detect. Fly deployment
-is followed by a public readiness check, and production web deployment starts
-only after the deployed API passes that check.
-
-Fly deployment runs only after backend and Docker gates pass on `main`. Vercel
-preview/production deployment remains separate from booking correctness. Bun,
-PostgreSQL, Fly CLI, Vercel CLI, Elysia, and TypeScript versions are pinned to
-avoid unexpected `latest` upgrades in the critical path.
-
-## Product Scope
-
-RoomFlow is primarily an internal physical-resource management system for a school or organization. The existing individual Free/Pro subscription remains available for compatibility, but billing is not part of the booking correctness boundary.
-
-There is currently a positioning mismatch between the internal organization workflow and individual SaaS billing. A future SaaS version should introduce organizations, tenant isolation, organization membership, and organization-level billing as a separate project.
-
-## Booking Correctness (Phase 1)
-
-Every implemented booking creation path uses `BookingPolicyService`:
-
-- Authenticated user and admin bookings
-- Kiosk walk-in bookings
-- Waitlist promotion
-- Every occurrence created or edited through `BookingSeriesService`
-
-Weekly recurring bookings use the same policy and serializable transaction as
-single bookings. A series is created atomically only when every occurrence is
-valid; PostgreSQL exclusion constraints remain the final overlap guarantee.
-
-The server enforces:
-
-- A valid future `[startTime, endTime)` interval
-- Active room and room capacity
-- Configurable duration, advance-booking, and active-booking limits
-- Room role restrictions
-- Active `TimeSlot` opening hours
-- Full-day and partial `RoomClosure` periods
-- User and room overlap checks
-- Explicit `Asia/Bangkok` calendar rules with UTC instants stored as PostgreSQL `TIMESTAMPTZ`
-
-PostgreSQL GiST exclusion constraints independently prevent active room and user overlaps for `PENDING`, `CONFIRMED`, and `CHECKED_IN` bookings. Application checks remain in place for readable errors, and serializable transactions retry retryable PostgreSQL failures.
-
-## Booking State Machine
-
-```text
-PENDING   -> CONFIRMED | REJECTED | CANCELLED
-CONFIRMED -> CHECKED_IN | CANCELLED | EXPIRED
-CHECKED_IN -> COMPLETED
+```mermaid
+flowchart LR
+  User[User or admin browser] --> Web[React + TanStack web app]
+  Kiosk[Paired room kiosk] --> API[Bun + Elysia API]
+  Web --> API
+  API --> Auth[Better Auth]
+  API --> Domains[Domain services]
+  Domains --> Policy[BookingPolicyService<br/>CheckInPolicyService]
+  Domains --> DB[(PostgreSQL)]
+  DB --> Constraints[GiST exclusion constraints]
+  DB --> Jobs[Background and notification jobs]
+  DB --> Audit[BookingEvent and AuditLog]
+  Worker[In-process workers] --> Jobs
+  Jobs --> Providers[Resend and LINE Messaging API]
+  API --> SSE[Database-backed SSE]
+  SSE --> Web
+  SSE --> Kiosk
 ```
 
-`COMPLETED`, `CANCELLED`, `REJECTED`, and `EXPIRED` are terminal. Each creation and transition writes a `BookingEvent` in the same database transaction with actor, previous/new status, safe metadata, timestamp, and request correlation ID.
+The workers run inside API instances, but coordination is database-backed. A
+unique job key prevents duplicate scheduling and workers claim rows with
+`FOR UPDATE SKIP LOCKED`. No external broker is required for the current load and
+operational model.
 
-## QR, Kiosk, and Device Security (Phase 2)
+### Repository map
 
-RoomFlow uses one `CheckInPolicyService` for the booking API, kiosk device API,
-kiosk camera window, and booking-expiration job:
+```text
+apps/
+├── api/                       Bun, Elysia, Prisma, PostgreSQL
+│   ├── prisma/                Schema and reviewed migrations
+│   ├── scripts/               Migration entrypoint
+│   ├── src/
+│   │   ├── booking/           Policy, state machine, series, alternatives
+│   │   ├── check-in/          Shared QR and kiosk check-in policy
+│   │   ├── device/            Pairing, credentials, heartbeat, walk-ins
+│   │   ├── notification/      Providers, outbox, LINE linking
+│   │   ├── jobs/              Durable scheduling and workers
+│   │   ├── audit/             Append-only audit service
+│   │   └── realtime/          PostgreSQL-backed SSE
+│   └── test/                  Unit and PostgreSQL integration tests
+├── web/                       React, Vite, TanStack Router and Query
+├── docs/                      Operational setup guides
+└── .github/workflows/         CI/CD quality and deployment gates
+```
+
+## Booking correctness
+
+Every implemented creation path calls `BookingPolicyService`:
+
+- Normal authenticated-user and admin bookings
+- Kiosk walk-ins
+- Waitlist promotion
+- Recurring preview, creation, and edits
+
+The server validates:
+
+- `startTime < endTime` and start time is not in the past
+- Room existence, active state, capacity, and allowed roles
+- Configurable duration, advance-booking, and active-booking limits
+- Active room `TimeSlot` opening hours
+- Full-day and partial `RoomClosure` periods
+- Overlapping active bookings for both the user and room
+- Explicit `Asia/Bangkok` business dates and weekdays
+
+Timestamps are stored as UTC PostgreSQL `TIMESTAMPTZ` values. Calendar rules use
+explicit timezone conversion and never use locale-string round trips.
+
+Application checks return readable errors. PostgreSQL GiST exclusion constraints
+are the final concurrency guarantee for active `PENDING`, `CONFIRMED`, and
+`CHECKED_IN` room and user ranges. Serializable transactions retry recognized
+serialization and deadlock failures.
+
+### Booking state machine
+
+```mermaid
+stateDiagram-v2
+  [*] --> PENDING
+  PENDING --> CONFIRMED
+  PENDING --> REJECTED
+  PENDING --> CANCELLED
+  CONFIRMED --> CHECKED_IN
+  CONFIRMED --> CANCELLED
+  CONFIRMED --> EXPIRED
+  CHECKED_IN --> COMPLETED
+  REJECTED --> [*]
+  CANCELLED --> [*]
+  EXPIRED --> [*]
+  COMPLETED --> [*]
+```
+
+Terminal states cannot return to active states. Each creation and transition
+writes a correlated `BookingEvent`; cross-domain administrative activity is also
+recorded in `AuditLog` with safe metadata.
+
+## QR, kiosk, and device flow
+
+All entry points use this inclusive check-in window:
 
 ```text
 startTime - 10 minutes <= check-in <= startTime + 12 minutes
 ```
 
-- QR tokens use 32 random bytes, expire after at most two minutes, are single-use,
-  and are stored only as SHA-256 hashes.
-- QR generation is available only inside the check-in window. Check-in requires
-  an active, non-revoked device assigned to the booking room; authenticated users
-  cannot bypass the kiosk requirement.
-- Device credentials use 32 random bytes and are stored only as SHA-256 hashes.
-  Plaintext is returned once when created, paired, rotated, or reactivated.
-- Rotation invalidates the previous credential immediately. Revocation disables
-  the device and invalidates outstanding pairing codes. Reactivation always
-  issues a new credential.
-- Pairing codes are HMAC-hashed, expire after ten minutes, are atomically
-  single-use, and rotate the device credential when consumed.
-- Pairing, QR scans, walk-ins, and heartbeats use PostgreSQL-backed rate limits,
-  so limits remain effective across multiple API instances.
-- Device online status is derived server-side from heartbeat freshness. Kiosks
-  heartbeat every 30 seconds and are considered online for 90 seconds.
-- Walk-ins use a dedicated system principal per kiosk, require requester metadata,
-  enter `CHECKED_IN` state atomically, and record correlated `BookingEvent` entries.
+```mermaid
+sequenceDiagram
+  participant User
+  participant API
+  participant Kiosk
+  participant DB as PostgreSQL
 
-## Durable Notifications (Phase 3)
-
-Notification delivery is isolated from booking transactions through a
-PostgreSQL-backed outbox:
-
-- `EmailNotificationProvider` sends through Resend and uses provider idempotency
-  keys.
-- `LineMessagingProvider` uses LINE Messaging API with `X-Line-Retry-Key`; the
-  discontinued LINE Notify API is not used.
-- Users link a LINE identity by sending a random, HMAC-hashed, single-use,
-  ten-minute code to the configured RoomFlow bot. The signed LINE webhook stores
-  only the resulting LINE user ID.
-- User preferences control email, LINE, booking updates, 30-minute reminders,
-  check-in reminders, and waitlist promotion.
-- Jobs have unique idempotency keys, bounded exponential retries, safe error
-  details, and PostgreSQL `FOR UPDATE SKIP LOCKED` claiming across API instances.
-- Provider failures happen after booking commits and cannot roll back a booking.
-- Concurrent reminder scanners may run on multiple instances; database
-  idempotency prevents duplicate jobs.
-- `NODE_ENV=test` or `NOTIFICATIONS_DISABLED=true` suppresses all real provider
-  calls during automated tests.
-
-Required production notification variables are documented in `api/.env.example`:
-`RESEND_API_KEY`, `EMAIL_FROM`, `LINE_CHANNEL_ACCESS_TOKEN`,
-`LINE_CHANNEL_SECRET`, and `LINE_BOT_BASIC_ID`. Configure the LINE Developers
-webhook URL as `https://<api-host>/api/line/webhook`.
-
-For the exact LINE Official Account, LINE Developers Console, Fly secret,
-webhook, manual verification, and credential-rotation steps, see
-[`docs/line-messaging-setup.md`](docs/line-messaging-setup.md).
-
-## Safe Background Jobs and Auditability (Phase 4)
-
-Scheduled maintenance uses PostgreSQL as the durable coordination layer. Each
-API instance may wake the scheduler, but a unique time-bucketed `job_key` creates
-only one persisted job per task and interval. Workers claim different rows with
-`FOR UPDATE SKIP LOCKED`:
-
-```text
-API instances
-  -> idempotent background_jobs scheduler
-  -> SKIP LOCKED workers
-  -> booking state machine / notification outbox / waitlist policy
-  -> append-only audit_logs
+  User->>API: Request QR inside check-in window
+  API->>DB: Store SHA-256 token hash and short expiry
+  API-->>User: Return plaintext QR once
+  User->>Kiosk: Present QR
+  Kiosk->>API: Device ID + device key + QR token
+  API->>DB: Verify device, room, booking, window, status, and unused hash
+  DB-->>API: Atomically consume token and transition booking
+  API-->>Kiosk: CHECKED_IN booking or safe rejection
 ```
 
-The job types are booking expiration, automatic checkout, reminder enqueueing,
-waitlist promotion, and terminal-job retention. Jobs have bounded exponential
-retry, stale-lock recovery, safe errors, structured results, and 30-day completed
-history by default. Sent/cancelled notification jobs default to 90-day retention;
-failed notification jobs default to 180 days. Audit history is not removed by job
-retention. Notification delivery continues to use its dedicated outbox.
+- QR tokens use 32 random bytes, are short-lived, stored hashed, room-bound, and
+  atomically single-use.
+- User check-in cannot bypass the correct paired room device.
+- Device keys use 32 random bytes and are stored only as hashes. Plaintext is
+  shown once when a device is created, paired, rotated, or reactivated.
+- Pairing codes are HMAC-hashed, expire after ten minutes, are single-use, and
+  are protected by PostgreSQL-backed brute-force limits.
+- Revocation disables the device and active pairing codes. Rotation invalidates
+  the old credential immediately. Reactivation always issues a new credential.
+- Online status is derived from heartbeat freshness: kiosks heartbeat every 30
+  seconds and are considered online for 90 seconds.
+- Walk-ins use a dedicated system principal per kiosk and require auditable
+  requester metadata. Successful creation enters `CHECKED_IN`; the UI does not
+  report a pending booking as checked in.
 
-Waitlist promotion periodically retries available future slots through
-`BookingPolicyService`; entries whose start time has passed become `EXPIRED`.
-Concurrent promotion remains protected by serializable transactions and the
-booking exclusion constraints.
+## Recurring bookings, real-time status, and alternatives
 
-`AuditLog` records safe booking, room, device, waitlist, and job events with actor,
-target, previous/new state, correlation ID, and `TIMESTAMPTZ` timestamp. Credential
-hashes, plaintext device keys, pairing codes, and QR tokens are never audit
-metadata. Booking state changes still write `BookingEvent` and `AuditLog` in the
-same transaction. Admins can inspect a booking timeline from the booking table;
-ordinary booking detail responses do not expose audit metadata.
+Weekly recurrence is available only while an individual Pro entitlement is
+active. A series supports preview, atomic creation, one/future/whole-series edits,
+and one/future/entire cancellation. Conflicting dates and deterministic
+alternatives are returned before creation. Free users can list and cancel their
+existing series but cannot create or edit recurrence.
 
-Relevant settings are `BACKGROUND_JOB_SCHEDULE_INTERVAL_MS`,
-`BACKGROUND_JOB_LOCK_TIMEOUT_MS`, `BACKGROUND_JOB_MAX_ATTEMPTS`, and
-`BACKGROUND_JOB_RETENTION_DAYS`. Notification retention uses
-`NOTIFICATION_JOB_RETENTION_DAYS` and `FAILED_NOTIFICATION_JOB_RETENTION_DAYS`.
-Workers stop accepting timer wakeups and drain their in-flight run during graceful
-`SIGTERM`/`SIGINT` shutdown.
+When Stripe schedules cancellation at period end, recurring access remains until
+`planExpiresAt`. A durable expiry job then downgrades the user and cancels active
+series plus future active occurrences. An immediately inactive subscription does
+the same inside the idempotent webhook transaction.
 
-## Migration Process
+Safe room and device changes are published through database-backed Server-Sent
+Events. Clients reconnect with exponential backoff and retain polling as a
+fallback. Smart alternatives are explainable and ordered as follows:
+
+1. The same room at a nearby time.
+2. Another suitable room at the same time.
+3. The closest valid room-and-time combination.
+
+Every alternative is revalidated by `BookingPolicyService`; no AI is used to
+decide availability.
+
+## Notifications and background jobs
+
+Notification delivery uses a PostgreSQL outbox and does not run inside booking
+transactions. Failures therefore cannot roll back a booking.
+
+- `EmailNotificationProvider` uses Resend idempotency keys.
+- `LineMessagingProvider` uses LINE Messaging API and `X-Line-Retry-Key`.
+- LINE Notify is obsolete and is not used.
+- Users store a linked LINE user ID, not a LINE Notify token.
+- User preferences control channels, booking updates, reminders, and waitlist
+  promotion.
+- Workers persist retries with bounded exponential backoff and safe errors.
+- Tests disable real provider delivery.
+
+Required durable jobs include booking expiration, automatic checkout, reminder
+enqueueing, waitlist promotion, notification retries, terminal-job retention,
+and Pro-entitlement expiration. See
+[`docs/line-messaging-setup.md`](docs/line-messaging-setup.md) for provider setup.
+
+## Local development
+
+### Prerequisites
+
+- Bun `1.3.14`
+- Node.js `22`
+- pnpm `11.0.9`
+- PostgreSQL `17` recommended; the included Compose service provides PostgreSQL
+- Docker or another OCI-compatible engine for local PostgreSQL and image checks
+
+### 1. Start PostgreSQL
+
+```bash
+cd api
+docker compose up -d postgres
+```
+
+The development Compose file exposes PostgreSQL on `localhost:5432`. Use a
+direct connection or session pooler. Do not use a transaction pooler for booking
+transactions because the API uses interactive serializable transactions.
+
+### 2. Run the API
+
+```bash
+cd api
+cp .env.example .env
+bun install --frozen-lockfile
+bun run prisma generate
+bun run migrate
+bun run dev
+```
+
+Configure `DATABASE_URL` for the local database before migration. The API listens
+on `http://localhost:3000`; health is available at
+`http://localhost:3000/api/health`.
+
+### 3. Run the web application
+
+```bash
+cd web
+cp .env.example .env
+pnpm install --frozen-lockfile
+pnpm run dev
+```
+
+The web application listens on `http://localhost:3001`.
+
+## Environment variables
+
+Committed examples contain placeholders only. Never commit real credentials.
+
+### API
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `DATABASE_URL` | Yes | Direct/session PostgreSQL connection used by Prisma |
+| `TEST_DATABASE_URL` | Tests | Dedicated disposable integration-test database |
+| `NODE_ENV` | Yes | Runtime mode: `development`, `test`, or `production` |
+| `APP_VERSION` | Recommended | Version returned by `/api/health` |
+| `FRONTEND_URL` | Yes | Allowed production CORS origin |
+| `BETTER_AUTH_URL` | Yes | Public API/auth base URL |
+| `BETTER_AUTH_SECRET` | Yes | Better Auth and pairing-code HMAC secret, at least 32 characters |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Yes | Google OAuth credentials |
+| `BOOKING_MAX_DURATION_MINUTES` | No | Maximum booking duration; default `240` |
+| `BOOKING_FREE_ADVANCE_DAYS` | No | Free-user advance window; default `3` |
+| `BOOKING_PRO_ADVANCE_DAYS` | No | Pro advance window; default `30` |
+| `BOOKING_USER_ACTIVE_LIMIT` | No | Default active-booking limit; default `3` |
+| `BOOKING_TEACHER_ACTIVE_LIMIT` | No | Teacher active limit; default `5` |
+| `BOOKING_PRO_ACTIVE_LIMIT` | No | Pro active limit; default `10` |
+| `BOOKING_SERIES_MAX_OCCURRENCES` | No | Recurring occurrence limit; default `26` |
+| `BOOKING_SERIES_MAX_SPAN_DAYS` | No | Recurring series span; default `366` |
+| `NOTIFICATIONS_DISABLED` | No | Must be `true` in tests that must not contact providers |
+| `NOTIFICATION_MAX_ATTEMPTS` | No | Notification retry limit; default `5` |
+| `NOTIFICATION_WORKER_INTERVAL_MS` | No | Notification worker polling interval |
+| `NOTIFICATION_JOB_RETENTION_DAYS` | No | Sent/cancelled job retention; default `90` |
+| `FAILED_NOTIFICATION_JOB_RETENTION_DAYS` | No | Failed job retention; default `180` |
+| `RESEND_API_KEY` / `EMAIL_FROM` | Production email | Resend credentials and verified sender |
+| `LINE_CHANNEL_ACCESS_TOKEN` | Production LINE | LINE Messaging channel token |
+| `LINE_CHANNEL_SECRET` | Production LINE | LINE webhook signature secret |
+| `LINE_BOT_BASIC_ID` | Production LINE | Bot ID shown to users during linking |
+| `BACKGROUND_JOB_SCHEDULE_INTERVAL_MS` | No | Durable scheduler interval |
+| `BACKGROUND_JOB_LOCK_TIMEOUT_MS` | No | Stale worker-lock timeout |
+| `BACKGROUND_JOB_MAX_ATTEMPTS` | No | Background-job retry limit |
+| `BACKGROUND_JOB_RETENTION_DAYS` | No | Completed-job retention; default `30` |
+| `JOB_HEALTH_MAX_DUE_AGE_MS` | No | Oldest-due readiness threshold |
+| `JOB_HEALTH_BACKGROUND_FAILED_THRESHOLD` | No | Background failure alert threshold |
+| `JOB_HEALTH_NOTIFICATION_FAILED_THRESHOLD` | No | Notification failure alert threshold |
+| `JOB_HEALTH_LOG_INTERVAL_MS` | No | Structured degraded-health log interval |
+| `REALTIME_POLL_INTERVAL_MS` | No | PostgreSQL-backed SSE polling; default `2000` |
+| `STRIPE_SECRET_KEY` | Existing billing | Stripe server credential |
+| `STRIPE_PRICE_ID` | Existing billing | Individual Pro price |
+| `STRIPE_WEBHOOK_SECRET` | Existing billing | Stripe webhook signature secret |
+| `WEB_URL` | Existing billing | Browser return URL for Stripe flows |
+
+See [`api/.env.example`](api/.env.example) for safe example values.
+
+### Web
+
+| Variable | Purpose |
+| --- | --- |
+| `VITE_API_URL` | API origin used by Eden Treaty, for example `http://localhost:3000` |
+| `VITE_BACKEND_URL` | Backend origin used by authentication |
+| `VITE_FRONTEND_URL` | Public web origin |
+
+See [`web/.env.example`](web/.env.example).
+
+## Migration process
 
 ```bash
 cd api
 bun install --frozen-lockfile
 bun run prisma generate
 bun run migrate
+bun run prisma migrate status
 ```
 
-The Phase 1 migration performs a preflight check and stops if existing active bookings overlap or contain invalid ranges. It never deletes or rewrites conflicting bookings automatically; resolve reported production data explicitly before retrying. The Phase 2 migration hashes existing QR and device credentials, scrubs legacy plaintext columns while retaining non-secret compatibility placeholders for one rolling deployment, and backfills one walk-in system principal per device. A later cleanup migration can drop the constrained legacy columns after all Phase 2 machines are deployed.
+`bun run migrate` runs committed `prisma migrate deploy` migrations and retries
+only transient database/DNS failures with bounded backoff. Fly.io runs this as a
+release command before replacing machines. Never use `prisma db push` in
+production.
 
-The Phase 3 migration creates preferences, LINE link codes, and notification jobs.
-It scrubs obsolete LINE Notify tokens because they cannot be converted into LINE
-Messaging user IDs. The constrained empty legacy column remains for one rolling
-deployment and can be dropped after every API machine runs Phase 3. Existing users
-must link the RoomFlow LINE bot again after deployment.
+Several migrations contain reviewed PostgreSQL SQL for exclusion constraints,
+range operations, backfills, and durable-job checks that Prisma cannot express.
+Phase 1 migration preflight intentionally stops instead of deleting or rewriting
+invalid or overlapping production bookings.
 
-The Phase 4 migration creates constrained `background_jobs` and `audit_logs`
-tables, adds `EXPIRED` waitlist state, and backfills existing `BookingEvent` rows
-into the generic audit timeline. The API also merges any event written by an older
-rolling-deployment instance that has not yet been mirrored into `AuditLog`.
-
-The Phase 5 migration creates `stripe_webhook_events`. The Stripe event ID is the
-primary key and is inserted in the same transaction as local plan changes, making
-concurrent webhook retries idempotent for RoomFlow database side effects.
-
-The Phase 6 migration creates `booking_series`, links occurrences through
-`series_id` and a Bangkok `occurrence_date`, and adds the durable
-`EXPIRE_PRO_ACCESS` job type. The migration contains reviewed PostgreSQL checks
-for valid dates, times, weekdays, attendee counts, and one occurrence per date.
-
-## High-Value Features (Phase 6)
-
-### Weekly recurring bookings
-
-`BookingSeriesService` supports conflict preview, atomic weekly creation, editing
-one occurrence, editing this and future occurrences through a series split,
-editing the whole future series, and cancelling one/future/all occurrences. Past
-or terminal occurrences remain immutable. Conflict responses list every affected
-date and deterministic alternatives.
-
-Recurring creation and edits require an active individual Pro plan. Free users
-can still list and cancel historical series. When Stripe sets
-`cancel_at_period_end`, Pro access and recurring controls remain active until
-`planExpiresAt`. The PostgreSQL-backed `EXPIRE_PRO_ACCESS` job downgrades the user
-and cancels active series plus future `PENDING`/`CONFIRMED` occurrences only when
-that timestamp is reached. An immediately inactive/deleted Stripe subscription
-performs the same cancellation inside the idempotent webhook transaction.
-
-Settings: `BOOKING_SERIES_MAX_OCCURRENCES` (default 26) and
-`BOOKING_SERIES_MAX_SPAN_DAYS` (default 366).
-
-### Real-time room status
-
-Authenticated pages consume `GET /api/realtime/events`; paired kiosks consume
-`GET /api/devices/:deviceId/events` with the normal `X-Device-Key` header. Both
-are Server-Sent Event streams backed by the append-only PostgreSQL audit history,
-so separate API instances observe the same booking, check-in, room closure, room
-status, and device lifecycle changes without a broker. Device online/offline
-events are derived from heartbeat freshness. Stream payloads intentionally omit
-audit metadata, user details, credentials, and tokens.
-
-Clients reconnect with exponential backoff. User/admin pages invalidate TanStack
-Query caches on safe events and fall back to backoff polling when streaming is
-degraded. Kiosks keep their existing 30-second schedule polling as a fallback.
-`REALTIME_POLL_INTERVAL_MS` controls the database-backed stream interval and
-defaults to two seconds.
-
-### Smart alternatives
-
-Single and recurring conflicts use `BookingAlternativeService`. Candidates are
-validated by `BookingPolicyService` and ranked deterministically:
-
-1. The same room at nearby times.
-2. Another active room at the same time with sufficient capacity and all requested-room amenities.
-3. The closest valid room-and-time combination.
-
-The response explains each rank and never uses AI to choose room availability.
-
-## Automated Quality and Operations (Phase 5)
-
-Both packages use Biome for linting and formatting. Correctness violations block
-CI, while selected legacy unused-import and accessibility findings remain visible
-as warnings for incremental cleanup. The frontend uses Vitest, Testing Library,
-and jsdom for critical component states.
-
-CI validates an empty PostgreSQL 17.6 database, migration status, backend unit and
-integration tests, HTTP RBAC, concurrent booking and Stripe webhook behavior,
-frontend component tests, TypeScript, the Vite build, and the production API
-Dockerfile. Provider delivery is disabled during automated tests.
-
-`GET /api/health` is a public database-readiness endpoint. Admins can inspect
-`GET /api/operations/jobs/health` for persisted background/notification queue
-counts, delayed work, retained failures, and stale processing locks. Thresholds
-are configured with `JOB_HEALTH_MAX_DUE_AGE_MS`,
-`JOB_HEALTH_BACKGROUND_FAILED_THRESHOLD`,
-`JOB_HEALTH_NOTIFICATION_FAILED_THRESHOLD`, and
-`JOB_HEALTH_LOG_INTERVAL_MS`.
-
-## Tests
+## Tests and quality commands
 
 ```bash
+# API: database-independent checks
 cd api
 bun run lint
+bun run typecheck
 bun run test:unit
+bun run test:routes
 
-# Requires an isolated database with all migrations applied
+# API: requires a migrated, disposable PostgreSQL database
 TEST_DATABASE_URL=postgresql://user:password@localhost:5432/room_booking_test \
   bun run test:integration
 
-# Run every backend test directory
-bun test
-
+# Web
 cd ../web
 pnpm run lint
 pnpm test
@@ -363,29 +368,104 @@ pnpm exec tsc --noEmit
 pnpm run build
 ```
 
-Automated tests never require notification credentials or contact real providers.
-Integration tests cover concurrent booking exclusion, QR room
-binding/expiry/grace/replay, device credential rotation and revocation, pairing
-single-use behavior, audited walk-ins, concurrent database rate limiting,
-notification idempotency, multi-worker claiming, retries, duplicate reminder
-prevention, LINE link-code consumption, multi-instance scheduled-job claiming,
-background-job retry and retention, booking ownership/timeline RBAC, and scheduled
-waitlist promotion with correlated audit. Phase 5 adds HTTP route-level ownership
-tests, concurrent Stripe webhook idempotency tests, job-health unit tests, and
-frontend booking-timeline and destructive-confirmation component tests.
-Phase 6 adds Pro entitlement/expiry cancellation, recurring atomicity and edit
-scope tests, deterministic alternative ranking, Stripe end-of-period behavior,
-and safe database-backed SSE delivery.
+Never point integration tests at production or a shared development database.
+Automated tests set `NOTIFICATIONS_DISABLED=true` and do not contact Resend, LINE,
+or Stripe delivery endpoints.
 
-## Known Limitations and Roadmap
+Backend coverage includes capacity, opening hours, closures, user and room
+overlap, simultaneous booking requests, RBAC and ownership, QR wrong-room/time/
+replay cases, waitlist promotion, duplicate reminders, device rotation, Stripe
+webhook idempotency, recurring transactions, and safe SSE delivery. Frontend
+component tests cover critical booking timeline and destructive-device states.
 
-- Job health is available through an admin API and structured warnings, but an
-  external metrics/alert sink and dedicated operational dashboard remain future
-  improvements.
-- Device online/offline is derived from heartbeat freshness and is not written as
-  a high-volume audit event on every heartbeat.
-- The full Playwright booking-to-completion E2E remains optional; unit,
-  PostgreSQL integration, component, lint, type-check, migration, build, and
-  Docker gates are implemented.
-- Phase 6 recurring bookings, SSE room status, and smart alternatives are implemented.
-- Smart occupancy remains optional and feature-flagged for a later project.
+## CI/CD
+
+```mermaid
+flowchart TD
+  Change[Push or pull request] --> Backend[Backend lint, schema, migrations,<br/>unit, integration, route graph, types]
+  Change --> Frontend[Frontend lint, component tests,<br/>types and Vite build]
+  Backend --> Image[Build production API image]
+  Image --> Smoke[Migrate fresh PostgreSQL from image<br/>start image and require healthy API]
+  Smoke --> Fly[Deploy API to Fly.io]
+  Fly --> PublicHealth[Verify public /api/health]
+  Frontend --> Vercel[Vercel production deploy]
+  PublicHealth --> Vercel
+```
+
+The workflow uses lockfile-aware caches and pinned Bun, Node.js, pnpm,
+PostgreSQL, Fly CLI, and Vercel CLI versions. Production deployment runs only on
+`main`. Pull requests and `development` pushes still run the relevant quality
+gates; preview deployment remains separate from production.
+
+The full application route graph is compiled in CI because Elysia route conflicts
+can pass TypeScript and Docker build checks but fail during server startup. CI
+also starts the exact production image and requires a healthy database-backed
+response before Fly deployment is allowed.
+
+## Operations
+
+- `GET /api/health` is public and returns database readiness, service name,
+  version, and timestamp. It returns HTTP `503` when readiness is degraded.
+- `GET /api/operations/jobs/health` is admin-only and exposes safe queue counts,
+  delayed work, retained failures, and stale processing locks.
+- Booking timelines are admin-only and correlate booking events with safe audit
+  records.
+- Fly.io keeps at least one API machine running and checks `/api/health` every 30
+  seconds.
+
+## Live demo and screenshots
+
+- Web demo: `TBD — add the production Vercel URL`
+- API health: [room-booking-api.fly.dev/api/health](https://room-booking-api.fly.dev/api/health)
+- Screenshots: `TBD — add room search, booking approval, QR, kiosk, and admin timeline images`
+
+Place future portfolio screenshots under `docs/screenshots/` and replace the
+placeholders only after verifying the deployed flow.
+
+## Trade-offs
+
+- A modular monolith keeps transactions, booking policy, and audit consistency
+  simple. Independent services would add operational cost without a current load
+  requirement.
+- PostgreSQL acts as both source of truth and durable coordination layer. This
+  avoids a broker while providing concurrency constraints, idempotent jobs, and
+  multi-instance workers.
+- Notifications and jobs are at-least-once. Database idempotency plus Resend and
+  LINE provider keys reduce duplicates, but a provider that accepts a request and
+  loses the response can still create a narrow duplicate-delivery window.
+- SSE is sufficient for one-way room-status updates and works with polling
+  fallback. WebSockets are unnecessary for the implemented event model.
+- Individual Pro billing is retained for compatibility even though the primary
+  product direction is organization-internal resource management.
+
+## Known limitations
+
+- Organization tenancy and organization-level billing are not implemented.
+- Reports exist, but the full operational metric set—duration-based occupancy,
+  no-show rate, approval latency, actual-versus-reserved use, and device uptime—
+  is not yet complete.
+- The full Playwright sign-in-to-completion flow is not implemented. Current
+  quality gates use unit, PostgreSQL integration, HTTP RBAC, component, migration,
+  build, and production-image startup tests.
+- External metrics/alert integration and a dedicated operations dashboard remain
+  future work; an admin health API and structured warnings provide current
+  visibility.
+- Frontend production build has a known large main-chunk warning and would benefit
+  from additional route-level code splitting.
+- Smart occupancy and sensor telemetry are not implemented.
+
+## Roadmap
+
+1. Complete operational reports using booking time and `Asia/Bangkok` date
+   boundaries: occupancy duration, no-show and cancellation rates, approval
+   latency, capacity use, device uptime, and peak hours.
+2. Add the deterministic Playwright booking-to-completion flow with isolated test
+   identities and a paired kiosk fixture.
+3. Add external metrics/alerts and improve frontend code splitting.
+4. If product direction becomes SaaS, design organization tenancy and
+   organization-level billing as a separate project.
+5. Optionally design feature-flagged smart occupancy with authenticated telemetry,
+   retention/downsampling, confirmation windows, and audited recommendations.
+
+Smart occupancy must never cancel a booking from a single sensor reading, and the
+normal booking system must continue to work without hardware.
