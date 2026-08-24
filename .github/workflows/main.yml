@@ -82,6 +82,10 @@ jobs:
         working-directory: api
         run: bun run prisma validate
 
+      - name: Compile Full API Route Graph
+        working-directory: api
+        run: bun run test:routes
+
       - name: Validate Migrations on Fresh PostgreSQL
         working-directory: api
         run: bun run migrate
@@ -178,6 +182,24 @@ jobs:
     runs-on: ubuntu-latest
     needs: backend-ci
 
+    services:
+      postgres:
+        image: postgres:17.6-bookworm
+        env:
+          POSTGRES_USER: roomflow_smoke
+          POSTGRES_PASSWORD: roomflow_smoke
+          POSTGRES_DB: roomflow_smoke
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U roomflow_smoke -d roomflow_smoke"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      SMOKE_DATABASE_URL: postgresql://roomflow_smoke:roomflow_smoke@127.0.0.1:5432/roomflow_smoke
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v6
@@ -191,9 +213,59 @@ jobs:
           context: api
           file: api/Dockerfile
           push: false
+          load: true
           tags: roomflow-api:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Validate Migrations from Production Image
+        run: >-
+          docker run --rm --network host
+          -e DATABASE_URL="${SMOKE_DATABASE_URL}"
+          -e NODE_ENV=test
+          -e NOTIFICATIONS_DISABLED=true
+          -e BETTER_AUTH_SECRET=roomflow-docker-smoke-secret-at-least-32-characters
+          roomflow-api:ci bun run migrate
+
+      - name: Start Production API Image
+        run: >-
+          docker run --detach --name roomflow-api-smoke --network host
+          -e DATABASE_URL="${SMOKE_DATABASE_URL}"
+          -e NODE_ENV=production
+          -e NOTIFICATIONS_DISABLED=true
+          -e BETTER_AUTH_SECRET=roomflow-docker-smoke-secret-at-least-32-characters
+          -e BETTER_AUTH_URL=http://127.0.0.1:3000
+          -e FRONTEND_URL=http://127.0.0.1:3001
+          -e GOOGLE_CLIENT_ID=ci-smoke-client
+          -e GOOGLE_CLIENT_SECRET=ci-smoke-secret
+          -e APP_VERSION=ci-smoke
+          roomflow-api:ci
+
+      - name: Verify Production API Startup and Readiness
+        run: |
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error http://127.0.0.1:3000/api/health > /tmp/roomflow-health.json; then
+              grep '"status":"healthy"' /tmp/roomflow-health.json
+              grep '"service":"roomflow-api"' /tmp/roomflow-health.json
+              exit 0
+            fi
+            if [ "$(docker inspect --format='{{.State.Running}}' roomflow-api-smoke)" != "true" ]; then
+              echo "Production API container exited before becoming healthy"
+              docker logs roomflow-api-smoke
+              exit 1
+            fi
+            echo "Waiting for production API readiness (${attempt}/30)"
+            sleep 1
+          done
+          echo "Production API did not become healthy within 30 seconds"
+          docker logs roomflow-api-smoke
+          exit 1
+
+      - name: Show API Smoke Logs and Clean Up
+        if: always()
+        run: |
+          docker logs roomflow-api-smoke || true
+          docker rm --force roomflow-api-smoke || true
 
   deploy-backend:
     name: Deploy Backend to Fly.io
@@ -215,6 +287,12 @@ jobs:
         run: flyctl deploy --remote-only
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Verify Fly Deployment Health
+        run: >-
+          curl --fail --silent --show-error
+          --retry 12 --retry-delay 5 --retry-all-errors
+          https://room-booking-api.fly.dev/api/health
 
   deploy-frontend-preview:
     name: Deploy Frontend Preview (Vercel)
@@ -255,7 +333,7 @@ jobs:
   deploy-frontend-production:
     name: Deploy Frontend Production (Vercel)
     runs-on: ubuntu-latest
-    needs: frontend-ci
+    needs: [frontend-ci, deploy-backend]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
     steps:

@@ -6,6 +6,7 @@
     "format": "biome format --write --config-path=../biome.json src test scripts libs utils",
     "test": "bun test test",
     "test:unit": "bun test test/unit",
+    "test:routes": "bun test test/unit/routing",
     "test:integration": "bun test test/integration",
     "typecheck": "tsc -p tsconfig.json --noEmit --ignoreDeprecations 6.0",
     "dev": "bun run --watch src/index.ts",

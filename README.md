@@ -89,6 +89,13 @@ builds the Vite application. A separate Buildx job verifies the production API
 Dockerfile before Fly deployment is allowed. Dependency caches use the actual
 `api/bun.lock` and `web/pnpm-lock.yaml` files.
 
+CI also compiles the complete Elysia route graph, migrates a fresh PostgreSQL
+database from the production image, starts that exact image, and requires a
+healthy `/api/health` response. This catches route-composition and startup errors
+that static type-checking or a Docker build alone cannot detect. Fly deployment
+is followed by a public readiness check, and production web deployment starts
+only after the deployed API passes that check.
+
 Fly deployment runs only after backend and Docker gates pass on `main`. Vercel
 preview/production deployment remains separate from booking correctness. Bun,
 PostgreSQL, Fly CLI, Vercel CLI, Elysia, and TypeScript versions are pinned to
