@@ -74,7 +74,7 @@ export class RealtimeEventService {
 
   stream(scope: RealtimeScope, request: Request, suppliedCursor?: string | null) {
     const encoder = new TextEncoder();
-    const pollMs = Math.max(1_000, Number(process.env.REALTIME_POLL_INTERVAL_MS) || 2_000);
+    const pollMs = Math.max(5_000, Number(process.env.REALTIME_POLL_INTERVAL_MS) || 10_000);
     let cancelled = false;
     const service = this;
 

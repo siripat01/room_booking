@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { Cpu } from "lucide-react";
+import { apiUrl } from "../lib/api";
 
 export const Route = createFileRoute("/pair")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -23,7 +24,7 @@ function PairPage() {
     setError("");
 
     try {
-      const res = await fetch("/api/devices/pair", {
+      const res = await fetch(apiUrl("/api/devices/pair"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code }),

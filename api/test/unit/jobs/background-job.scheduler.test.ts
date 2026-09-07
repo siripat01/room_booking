@@ -1,34 +1,60 @@
 import { expect, test } from "bun:test";
 import { BackgroundJobScheduler } from "../../../src/jobs/background-job.scheduler";
 
-test("retention cleanup uses one hourly key when the scheduler interval is sub-minute", async () => {
-  const previous = process.env.BACKGROUND_JOB_SCHEDULE_INTERVAL_MS;
-  process.env.BACKGROUND_JOB_SCHEDULE_INTERVAL_MS = "10000";
+function fakePrisma(due: Partial<Record<string, boolean>> = {}) {
   const batches: Array<Array<{ type: string; jobKey: string }>> = [];
-  const prisma = {
-    backgroundJob: {
-      createMany: async ({ data }: { data: Array<{ type: string; jobKey: string }> }) => {
-        batches.push(data);
-        return { count: data.length };
+  const first = (name: string) => async () => due[name] ? { id: name } : null;
+  return {
+    batches,
+    prisma: {
+      backgroundJob: {
+        createMany: async ({ data }: { data: Array<{ type: string; jobKey: string }> }) => {
+          batches.push(data);
+          return { count: data.length };
+        },
       },
+      booking: { findFirst: first("booking") },
+      user: { findFirst: first("user") },
+      waitlistEntry: { findFirst: first("waitlist") },
     },
   };
+}
 
-  try {
-    const scheduler = new BackgroundJobScheduler(prisma as never);
-    await scheduler.enqueueDueJobs(new Date("2099-01-02T03:00:25.000Z"));
-    await scheduler.enqueueDueJobs(new Date("2099-01-02T03:00:35.000Z"));
-  } finally {
-    if (previous === undefined) delete process.env.BACKGROUND_JOB_SCHEDULE_INTERVAL_MS;
-    else process.env.BACKGROUND_JOB_SCHEDULE_INTERVAL_MS = previous;
-  }
+test("does not persist no-op jobs when no booking work is due", async () => {
+  const { prisma, batches } = fakePrisma();
+  const scheduler = new BackgroundJobScheduler(prisma as never);
 
-  const cleanupKeys = batches
-    .flat()
-    .filter(({ type }) => type === "PURGE_JOB_HISTORY")
-    .map(({ jobKey }) => jobKey);
-  expect(cleanupKeys).toEqual([
-    "roomflow:PURGE_JOB_HISTORY:2099-01-02T03:00:00.000Z",
-    "roomflow:PURGE_JOB_HISTORY:2099-01-02T03:00:00.000Z",
+  const result = await scheduler.enqueueDueJobs(new Date("2099-01-02T03:00:25.000Z"));
+
+  expect(result).toMatchObject({ requested: 0, created: 0 });
+  expect(batches).toEqual([]);
+});
+
+test("persists only durable job types with due work", async () => {
+  const { prisma, batches } = fakePrisma({ booking: true, user: true, waitlist: true });
+  const scheduler = new BackgroundJobScheduler(prisma as never);
+
+  await scheduler.enqueueDueJobs(new Date("2099-01-02T03:07:10.000Z"));
+
+  expect(batches).toHaveLength(1);
+  expect(batches[0].map(({ type }) => type)).toEqual([
+    "EXPIRE_BOOKINGS",
+    "EXPIRE_PRO_ACCESS",
+    "AUTO_CHECKOUT",
+    "ENQUEUE_REMINDERS",
+    "PROMOTE_WAITLIST",
+  ]);
+});
+
+test("retention cleanup is scheduled once daily", async () => {
+  const { prisma, batches } = fakePrisma();
+  const scheduler = new BackgroundJobScheduler(prisma as never);
+
+  await scheduler.enqueueDueJobs(new Date("2099-01-02T00:00:25.000Z"));
+  await scheduler.enqueueDueJobs(new Date("2099-01-02T01:00:25.000Z"));
+
+  expect(batches).toHaveLength(1);
+  expect(batches[0]).toEqual([
+    expect.objectContaining({ type: "PURGE_JOB_HISTORY", jobKey: "roomflow:PURGE_JOB_HISTORY:2099-01-02T00:00:00.000Z" }),
   ]);
 });

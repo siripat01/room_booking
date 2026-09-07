@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { apiUrl } from "./api";
 
 type Options = {
   roomId?: string;
@@ -37,7 +38,7 @@ export function useRealtimeInvalidation({ roomId, queryKeys }: Options) {
       if (closed) return;
       const params = new URLSearchParams();
       if (roomId) params.set("roomId", roomId);
-      source = new EventSource(`/api/realtime/events${params.size ? `?${params}` : ""}`, {
+      source = new EventSource(apiUrl(`/api/realtime/events${params.size ? `?${params}` : ""}`), {
         withCredentials: true,
       });
       source.onopen = () => {

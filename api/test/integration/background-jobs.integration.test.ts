@@ -74,11 +74,21 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-integrationTest("concurrent schedulers and SKIP LOCKED workers execute each scheduled job once", async () => {
+integrationTest("concurrent schedulers and SKIP LOCKED workers execute each due scheduled job once", async () => {
   if (!prisma) throw new Error("TEST_DATABASE_URL is required");
   const now = new Date("2099-01-02T03:07:10.000Z");
   await prisma.backgroundJob.deleteMany({
     where: { scheduledFor: new Date("2099-01-02T03:07:00.000Z") },
+  });
+  await prisma.waitlistEntry.create({
+    data: {
+      userId,
+      roomId,
+      startTime: new Date("2099-01-03T03:00:00.000Z"),
+      endTime: new Date("2099-01-03T04:00:00.000Z"),
+      attendees: 2,
+      purpose: "Scheduler due-work fixture",
+    },
   });
   const schedulers = [new BackgroundJobScheduler(prisma), new BackgroundJobScheduler(prisma)];
   await Promise.all(schedulers.map((scheduler) => scheduler.enqueueDueJobs(now)));
@@ -87,7 +97,8 @@ integrationTest("concurrent schedulers and SKIP LOCKED workers execute each sche
     where: { scheduledFor: new Date("2099-01-02T03:07:00.000Z") },
   });
   trackedJobIds.push(...jobs.map(({ id }) => id));
-  expect(jobs).toHaveLength(5);
+  expect(jobs).toHaveLength(1);
+  expect(jobs[0]?.type).toBe("PROMOTE_WAITLIST");
 
   const executions = new Map<BackgroundJobType, number>();
   const handler = (type: BackgroundJobType) => async () => {
@@ -104,11 +115,11 @@ integrationTest("concurrent schedulers and SKIP LOCKED workers execute each sche
   ];
   await Promise.all(workers.map((worker) => worker.runOnce(10, now)));
 
-  expect([...executions.values()].reduce((total, count) => total + count, 0)).toBe(5);
+  expect([...executions.values()].reduce((total, count) => total + count, 0)).toBe(1);
   expect([...executions.values()].every((count) => count === 1)).toBe(true);
   expect(await prisma.backgroundJob.count({
     where: { id: { in: trackedJobIds }, status: "COMPLETED" },
-  })).toBe(5);
+  })).toBe(1);
 });
 
 integrationTest("failed jobs persist retry state and complete on a later attempt", async () => {

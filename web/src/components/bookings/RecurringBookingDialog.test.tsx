@@ -49,12 +49,12 @@ describe("RecurringBookingDialog", () => {
     await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      "/api/booking-series/preview",
+      expect.stringMatching(/\/api\/booking-series\/preview$/),
       expect.objectContaining({ method: "POST", credentials: "include" }),
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      "/api/booking-series",
+      expect.stringMatching(/\/api\/booking-series$/),
       expect.objectContaining({ method: "POST", credentials: "include" }),
     );
   });

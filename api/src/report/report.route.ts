@@ -18,6 +18,7 @@ const reportRoutes = new Elysia({ prefix: "/reports" })
             .onBeforeHandle(({ user, status }) => {
                 if (user.role !== "adminRole") return status(403);
             })
+            .get("/dashboard", () => reportService.getDashboard())
             .get("/overview", ({ query }) =>
                 reportService.getOverview(query.from, query.to, query.roomId), { query: QUERY })
             .get("/rooms/usage", ({ query }) =>

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarRange, Clock, Loader2, MapPin, Repeat2, Users } from "lucide-react";
 import { toast } from "sonner";
 import { bookingSeriesQuery, type BookingSeries } from "../../lib/queries";
+import { apiUrl } from "../../lib/api";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 
@@ -20,7 +21,7 @@ export function RecurringSeriesList({ plan }: { plan?: string }) {
   const { data: series = [], isLoading } = useQuery(bookingSeriesQuery());
   const cancelMutation = useMutation({
     mutationFn: async (seriesId: string) => {
-      const response = await fetch(`/api/booking-series/${encodeURIComponent(seriesId)}/cancel`, {
+      const response = await fetch(apiUrl(`/api/booking-series/${encodeURIComponent(seriesId)}/cancel`), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },

@@ -21,6 +21,7 @@ import { Checkbox } from "../components/ui/checkbox";
 import { sessionQuery } from "../lib/queries";
 import { useCurrentUser } from "../lib/useCurrentUser";
 import { useTitle } from "../lib/useTitle";
+import { apiUrl } from "../lib/api";
 
 export const Route = createFileRoute("/settings")({
   beforeLoad: async ({ context: { queryClient }, location }) => {
@@ -81,7 +82,7 @@ function SettingsPage() {
   const { data: planData } = useQuery({
     queryKey: ["my-plan"],
     queryFn: async () => {
-      const response = await fetch("/api/users/me/plan", { credentials: "include" });
+      const response = await fetch(apiUrl("/api/users/me/plan"), { credentials: "include" });
       if (!response.ok) throw new Error("Failed to load plan");
       return response.json() as Promise<{ plan: string; planExpiresAt: string | null }>;
     },
@@ -90,7 +91,7 @@ function SettingsPage() {
   const { data: notificationSettings, isLoading: notificationsLoading } = useQuery({
     queryKey: ["notification-settings"],
     queryFn: async () => {
-      const response = await fetch("/api/users/me/notifications", { credentials: "include" });
+      const response = await fetch(apiUrl("/api/users/me/notifications"), { credentials: "include" });
       if (!response.ok) throw new Error("Failed to load notification settings");
       return response.json() as Promise<NotificationSettings>;
     },
@@ -109,7 +110,7 @@ function SettingsPage() {
 
   const portalMutation = useMutation({
     mutationFn: async () => {
-      const response = await fetch("/api/subscription/portal", { method: "POST", credentials: "include" });
+      const response = await fetch(apiUrl("/api/subscription/portal"), { method: "POST", credentials: "include" });
       if (!response.ok) throw new Error("Failed to open subscription portal");
       const { url } = await response.json();
       return url as string;
@@ -120,7 +121,7 @@ function SettingsPage() {
 
   const preferenceMutation = useMutation({
     mutationFn: async (update: Partial<NotificationPreferences>) => {
-      const response = await fetch("/api/users/me/notifications/preferences", {
+      const response = await fetch(apiUrl("/api/users/me/notifications/preferences"), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -134,7 +135,7 @@ function SettingsPage() {
 
   const createLinkMutation = useMutation({
     mutationFn: async () => {
-      const response = await fetch("/api/users/me/line-link", { method: "POST", credentials: "include" });
+      const response = await fetch(apiUrl("/api/users/me/line-link"), { method: "POST", credentials: "include" });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error ?? "Failed to create link code");
       return data as LinkCode;
@@ -145,7 +146,7 @@ function SettingsPage() {
 
   const disconnectMutation = useMutation({
     mutationFn: async () => {
-      const response = await fetch("/api/users/me/line-link", { method: "DELETE", credentials: "include" });
+      const response = await fetch(apiUrl("/api/users/me/line-link"), { method: "DELETE", credentials: "include" });
       if (!response.ok) throw new Error("Failed to disconnect LINE");
     },
     onSuccess: () => {
@@ -158,7 +159,7 @@ function SettingsPage() {
 
   const testMutation = useMutation({
     mutationFn: async () => {
-      const response = await fetch("/api/users/me/notifications/test", { method: "POST", credentials: "include" });
+      const response = await fetch(apiUrl("/api/users/me/notifications/test"), { method: "POST", credentials: "include" });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error ?? "Failed to queue notification");
       return data as { queued: number };

@@ -5,7 +5,7 @@ import { useRealtimeInvalidation } from "../lib/useRealtimeInvalidation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCurrentUser } from "../lib/useCurrentUser";
 import { roomQuery, roomAvailabilityQuery, sessionQuery, waitlistQuery } from "../lib/queries";
-import { app } from "../lib/api";
+import { apiUrl, app } from "../lib/api";
 import { Navbar } from "../components/Navbar";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -125,7 +125,7 @@ function RoomDetailPage() {
       const slot = SLOTS.find((s) => s.start === form.slot)!;
       const startTime = new Date(`${form.date}T${slot.start}:00`).toISOString();
       const endTime = new Date(`${form.date}T${slot.end}:00`).toISOString();
-      const res = await fetch("/api/bookings", {
+      const res = await fetch(apiUrl("/api/bookings"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -167,7 +167,7 @@ function RoomDetailPage() {
   const waitlistMutation = useMutation({
     mutationFn: async () => {
       if (!conflictSlot) throw new Error("No slot selected");
-      const res = await fetch("/api/bookings/waitlist", {
+      const res = await fetch(apiUrl("/api/bookings/waitlist"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -595,7 +595,7 @@ function WeeklyCalendar({ roomId }: { roomId: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ["room-calendar", roomId, dateStr],
     queryFn: async () => {
-      const res = await fetch(`/api/rooms/${roomId}/calendar?date=${dateStr}`, { credentials: "include" });
+      const res = await fetch(apiUrl(`/api/rooms/${roomId}/calendar?date=${dateStr}`), { credentials: "include" });
       if (!res.ok) throw new Error("Failed to load calendar");
       return res.json() as Promise<{ weekStart: string; bookings: CalendarBooking[] }>;
     },
