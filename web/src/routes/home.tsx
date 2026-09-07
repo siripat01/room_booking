@@ -1,5 +1,5 @@
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
-import { useState } from "react";
+import { memo, useDeferredValue, useMemo, useState } from "react";
 import { useTitle } from "../lib/useTitle";
 import { useQuery } from "@tanstack/react-query";
 import { useCurrentUser } from "../lib/useCurrentUser";
@@ -57,10 +57,10 @@ const NO_CAP: CapFilter = { min: 0, max: Infinity };
 
 const CAPACITY_FILTERS: { label: string; filter: CapFilter }[] = [
   { label: "Any size", filter: NO_CAP },
-  { label: "1–5",     filter: { min: 1, max: 5 } },
-  { label: "6–10",    filter: { min: 6, max: 10 } },
-  { label: "11–20",   filter: { min: 11, max: 20 } },
-  { label: "20+",     filter: { min: 21, max: Infinity } },
+  { label: "1–5", filter: { min: 1, max: 5 } },
+  { label: "6–10", filter: { min: 6, max: 10 } },
+  { label: "11–20", filter: { min: 11, max: 20 } },
+  { label: "20+", filter: { min: 21, max: Infinity } },
 ];
 
 const CARD_GRADIENTS = [
@@ -80,8 +80,8 @@ function roomGradient(id: string): string {
 
 const ROLE_LABELS: Record<string, string> = {
   teacherRole: "Teachers",
-  adminRole:   "Admins",
-  userRole:    "Students",
+  adminRole: "Admins",
+  userRole: "Students",
 };
 
 function HomePage() {
@@ -89,25 +89,41 @@ function HomePage() {
   const { data: rooms = [], isLoading: loading } = useQuery(roomsQuery());
   useTitle("Find a Room");
   const [search, setSearch] = useState("");
+  const deferredSearch = useDeferredValue(search);
   const [capFilter, setCapFilter] = useState<CapFilter>(NO_CAP);
   const [amenityFilter, setAmenityFilter] = useState<string[]>([]);
   const [floorFilter, setFloorFilter] = useState("");
 
   const userRole = user?.isAdmin ? "adminRole" : user?.isTeacher ? "teacherRole" : "userRole";
 
-  const floors = Array.from(new Set(rooms.map((r) => r.floor))).sort();
-  const allAmenities = Array.from(new Set(rooms.flatMap((r) => r.amenities)));
+  const activeRooms = useMemo(() => rooms.filter((room) => room.isActive), [rooms]);
+  const floors = useMemo(
+    () => Array.from(new Set(activeRooms.map((room) => room.floor))).sort(),
+    [activeRooms],
+  );
+  const allAmenities = useMemo(
+    () => Array.from(new Set(activeRooms.flatMap((room) => room.amenities))),
+    [activeRooms],
+  );
+  const normalizedSearch = deferredSearch.trim().toLowerCase();
 
-  const filtered = rooms.filter((room) => {
-    if (!room.isActive) return false;
-    if (search && !room.name.toLowerCase().includes(search.toLowerCase()) &&
-      !room.floor.toLowerCase().includes(search.toLowerCase())) return false;
-    if ((capFilter.min > 0 || capFilter.max !== Infinity) &&
-      (room.capacity < capFilter.min || room.capacity > capFilter.max)) return false;
-    if (floorFilter && room.floor !== floorFilter) return false;
-    if (amenityFilter.length > 0 && !amenityFilter.every((a) => room.amenities.includes(a))) return false;
-    return true;
-  });
+  const filtered = useMemo(
+    () => activeRooms.filter((room) => {
+      if (
+        normalizedSearch &&
+        !room.name.toLowerCase().includes(normalizedSearch) &&
+        !room.floor.toLowerCase().includes(normalizedSearch)
+      ) return false;
+      if (
+        (capFilter.min > 0 || capFilter.max !== Infinity) &&
+        (room.capacity < capFilter.min || room.capacity > capFilter.max)
+      ) return false;
+      if (floorFilter && room.floor !== floorFilter) return false;
+      if (amenityFilter.length > 0 && !amenityFilter.every((a) => room.amenities.includes(a))) return false;
+      return true;
+    }),
+    [activeRooms, normalizedSearch, capFilter, floorFilter, amenityFilter],
+  );
 
   function toggleAmenity(a: string) {
     setAmenityFilter((prev) =>
@@ -137,7 +153,7 @@ function HomePage() {
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-slate-900">Find a Room</h1>
           <p className="text-muted-foreground text-sm mt-1">
-            {loading ? "Loading rooms…" : `${rooms.filter(r => r.isActive).length} rooms available`}
+            {loading ? "Loading rooms…" : `${activeRooms.length} rooms available`}
           </p>
         </div>
 
@@ -245,7 +261,7 @@ function HomePage() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {filtered.map((room) => (
-              <RoomCard key={room.id} room={room} gradient={roomGradient(room.id)} userRole={userRole} />
+              <RoomCard key={room.id} room={room} userRole={userRole} />
             ))}
           </div>
         )}
@@ -254,7 +270,8 @@ function HomePage() {
   );
 }
 
-function RoomCard({ room, gradient, userRole }: { room: Room; gradient: string; userRole: string }) {
+const RoomCard = memo(function RoomCard({ room, userRole }: { room: Room; userRole: string }) {
+  const gradient = roomGradient(room.id);
   const canBook = !room.allowedRoles?.length || room.allowedRoles.includes(userRole);
   const restrictionLabel = !canBook && room.allowedRoles?.length
     ? room.allowedRoles.map((r) => ROLE_LABELS[r] ?? r).join(" & ") + " only"
@@ -324,4 +341,4 @@ function RoomCard({ room, gradient, userRole }: { room: Room; gradient: string; 
       </div>
     </div>
   );
-}
+});

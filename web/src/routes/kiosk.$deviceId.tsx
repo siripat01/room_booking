@@ -62,6 +62,9 @@ async function kioskFetch(path: string, deviceKey: string, options?: RequestInit
 
 // ── QR Scanner ────────────────────────────────────────────────────────────────
 
+const QR_SCAN_INTERVAL_MS = 150;
+const QR_SCAN_MAX_WIDTH = 640;
+
 function QRScanner({ onScan, paused }: { onScan: (token: string) => void; paused: boolean }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -74,25 +77,26 @@ function QRScanner({ onScan, paused }: { onScan: (token: string) => void; paused
 
   useEffect(() => {
     let active = true;
+    let lastScanAt = 0;
 
     async function start() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
+          video: { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 360 } },
         });
         if (!active) { stream.getTracks().forEach((t) => t.stop()); return; }
         streamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          videoRef.current.play();
+          await videoRef.current.play();
         }
-        scan();
+        rafRef.current = requestAnimationFrame(scan);
       } catch {
         setError("ไม่สามารถเข้าถึงกล้องได้ กรุณาอนุญาตการใช้งานกล้อง");
       }
     }
 
-    function scan() {
+    function scan(timestamp: number) {
       if (!active) return;
       const video = videoRef.current;
       const canvas = canvasRef.current;
@@ -100,23 +104,27 @@ function QRScanner({ onScan, paused }: { onScan: (token: string) => void; paused
         rafRef.current = requestAnimationFrame(scan);
         return;
       }
-      if (!pausedRef.current) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const ctx = canvas.getContext("2d")!;
-        ctx.drawImage(video, 0, 0);
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+      if (!pausedRef.current && timestamp - lastScanAt >= QR_SCAN_INTERVAL_MS) {
+        lastScanAt = timestamp;
+        const targetWidth = Math.min(QR_SCAN_MAX_WIDTH, video.videoWidth);
+        const scale = targetWidth / video.videoWidth;
+        const targetHeight = Math.max(1, Math.round(video.videoHeight * scale));
+
+        if (canvas.width !== targetWidth) canvas.width = targetWidth;
+        if (canvas.height !== targetHeight) canvas.height = targetHeight;
+
+        const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+        ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
+        const imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
         const result = jsQR(imageData.data, imageData.width, imageData.height);
-        if (result?.data) {
-          onScan(result.data);
-          rafRef.current = requestAnimationFrame(scan);
-          return;
-        }
+        if (result?.data) onScan(result.data);
       }
+
       rafRef.current = requestAnimationFrame(scan);
     }
 
-    start();
+    void start();
 
     return () => {
       active = false;

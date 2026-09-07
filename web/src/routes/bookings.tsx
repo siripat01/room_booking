@@ -1,7 +1,7 @@
 import { useTitle } from "../lib/useTitle";
 import { useRealtimeInvalidation } from "../lib/useRealtimeInvalidation";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCurrentUser } from "../lib/useCurrentUser";
 import { sessionQuery, waitlistQuery, type BookingStatus, type Booking, type BookingListResponse, type WaitlistEntry } from "../lib/queries";
@@ -58,8 +58,8 @@ const TAB_FILTERS: { label: string; statuses: BookingStatus[] | null }[] = [
   { label: "All",       statuses: null },
 ];
 
-const SERIES_TAB = TAB_FILTERS.length; // index 4
-const WAITLIST_TAB = TAB_FILTERS.length + 1; // index 5
+const SERIES_TAB = TAB_FILTERS.length;
+const WAITLIST_TAB = TAB_FILTERS.length + 1;
 
 type QRState = { bookingId: string; token: string; expiresAt: string; roomName: string } | null;
 
@@ -74,9 +74,11 @@ function BookingsPage() {
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
-    const timer = window.setInterval(() => setNowMs(Date.now()), 1_000);
+    setNowMs(Date.now());
+    const intervalMs = qrState ? 1_000 : 30_000;
+    const timer = window.setInterval(() => setNowMs(Date.now()), intervalMs);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [qrState]);
 
   const isWaitlistTab = activeTab === WAITLIST_TAB;
   const isSeriesTab = activeTab === SERIES_TAB;
@@ -107,8 +109,20 @@ function BookingsPage() {
     enabled: isWaitlistTab,
   });
 
-  const bookings: Booking[] = data?.pages.flatMap((p) => p.bookings) ?? [];
+  const bookings = useMemo<Booking[]>(
+    () => data?.pages.flatMap((page) => page.bookings) ?? [],
+    [data],
+  );
   const total = data?.pages[0]?.total ?? 0;
+
+  const tabCounts = useMemo(
+    () => TAB_FILTERS.map((tab) =>
+      tab.statuses
+        ? bookings.reduce((count, booking) => count + (tab.statuses!.includes(booking.status) ? 1 : 0), 0)
+        : bookings.length,
+    ),
+    [bookings],
+  );
 
   const cancelMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -150,9 +164,12 @@ function BookingsPage() {
   });
 
   const activeStatuses = isWaitlistTab || isSeriesTab ? null : TAB_FILTERS[activeTab].statuses;
-  const displayed = activeStatuses
-    ? bookings.filter((b) => (activeStatuses as string[]).includes(b.status))
-    : bookings;
+  const displayed = useMemo(
+    () => activeStatuses
+      ? bookings.filter((booking) => activeStatuses.includes(booking.status))
+      : bookings,
+    [bookings, activeStatuses],
+  );
 
   const loading = isWaitlistTab ? waitlistLoading : isSeriesTab ? false : bookingsLoading;
   const qrBooking = qrState ? bookings.find((booking) => booking.id === qrState.bookingId) : undefined;
@@ -170,12 +187,9 @@ function BookingsPage() {
           <p className="text-muted-foreground text-sm mt-1">Track and manage your room reservations</p>
         </div>
 
-        {/* Tabs */}
         <div className="flex gap-1 mb-6 bg-white rounded-lg border p-1 overflow-x-auto">
           {TAB_FILTERS.map((tab, i) => {
-            const count = tab.statuses
-              ? bookings.filter((b) => (tab.statuses as string[]).includes(b.status)).length
-              : bookings.length;
+            const count = tabCounts[i];
             return (
               <button
                 key={tab.label}
@@ -209,7 +223,6 @@ function BookingsPage() {
             <CalendarDays className="w-3 h-3" />
             Recurring
           </button>
-          {/* Waitlist tab — only shown to PRO users */}
           {user?.plan === "PRO" && (
             <button
               onClick={() => setActiveTab(WAITLIST_TAB)}
@@ -232,7 +245,6 @@ function BookingsPage() {
           )}
         </div>
 
-        {/* Content */}
         {loading ? (
           <LoadingCentered />
         ) : isSeriesTab ? (
@@ -286,7 +298,6 @@ function BookingsPage() {
               />
             ))}
 
-            {/* Load More */}
             {hasNextPage && (
               <Button
                 variant="outline"
@@ -300,7 +311,6 @@ function BookingsPage() {
               </Button>
             )}
 
-            {/* Count info */}
             {total > 0 && (
               <p className="text-xs text-center text-muted-foreground pt-1">
                 แสดง {bookings.length} จาก {total} รายการ
@@ -310,7 +320,6 @@ function BookingsPage() {
         )}
       </main>
 
-      {/* Cancel confirmation */}
       <Dialog open={!!confirmCancelId} onOpenChange={(o) => { if (!o) setConfirmCancelId(null); }}>
         <DialogContent className="max-w-xs">
           <DialogHeader>
@@ -481,7 +490,6 @@ function BookingCard({
       <div className="p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 min-w-0">
-            {/* Room name + status */}
             <div className="flex items-center gap-2 flex-wrap mb-3">
               <h3 className="font-semibold text-slate-900">
                 {booking.room?.name ?? `Room ${booking.roomId.slice(0, 6)}`}
@@ -492,7 +500,6 @@ function BookingCard({
               </Badge>
             </div>
 
-            {/* Date & time */}
             <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-sm text-muted-foreground mb-2">
               <span className="flex items-center gap-1.5">
                 <CalendarDays className="w-3.5 h-3.5 text-blue-500" />
