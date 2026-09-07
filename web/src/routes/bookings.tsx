@@ -1,7 +1,7 @@
 import { useTitle } from "../lib/useTitle";
 import { useRealtimeInvalidation } from "../lib/useRealtimeInvalidation";
 import { createFileRoute, Link, redirect } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCurrentUser } from "../lib/useCurrentUser";
 import { sessionQuery, waitlistQuery, type BookingStatus, type Booking, type BookingListResponse, type WaitlistEntry } from "../lib/queries";
@@ -17,6 +17,8 @@ import {
 } from "lucide-react";
 import { LoadingCentered } from "../components/LoadingSpinner";
 import { RecurringSeriesList } from "../components/bookings/RecurringSeriesList";
+import { BookingQrAction } from "../components/bookings/BookingQrAction";
+import { formatCountdown, getBookingQrAvailability } from "../lib/bookingQr";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/bookings")({
@@ -69,6 +71,12 @@ function BookingsPage() {
   const [activeTab, setActiveTab] = useState(0);
   const [qrState, setQrState] = useState<QRState>(null);
   const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const isWaitlistTab = activeTab === WAITLIST_TAB;
   const isSeriesTab = activeTab === SERIES_TAB;
@@ -147,6 +155,10 @@ function BookingsPage() {
     : bookings;
 
   const loading = isWaitlistTab ? waitlistLoading : isSeriesTab ? false : bookingsLoading;
+  const qrBooking = qrState ? bookings.find((booking) => booking.id === qrState.bookingId) : undefined;
+  const qrExpiresAtMs = qrState ? new Date(qrState.expiresAt).getTime() : 0;
+  const isQrExpired = !!qrState && nowMs > qrExpiresAtMs;
+  const canRefreshQr = !!qrBooking && getBookingQrAvailability(qrBooking, nowMs) === "available";
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -270,6 +282,7 @@ function BookingsPage() {
                 cancelling={cancelMutation.isPending && cancelMutation.variables === booking.id}
                 onShowQR={() => qrMutation.mutate(booking)}
                 qrLoading={qrMutation.isPending && qrMutation.variables?.id === booking.id}
+                nowMs={nowMs}
               />
             ))}
 
@@ -333,14 +346,29 @@ function BookingsPage() {
 
           {qrState && (
             <div className="flex flex-col items-center gap-4 py-2">
-              <div className="p-4 bg-white rounded-2xl border shadow-sm">
-                <QRCodeSVG value={qrState.token} size={200} level="M" />
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Expires at {new Date(qrState.expiresAt).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
-                {" "}· valid for 10 minutes
-              </p>
-              <Button variant="outline" size="sm" onClick={() => qrMutation.mutate(bookings.find((b) => b.id === qrState.bookingId)!)}>
+              {isQrExpired ? (
+                <div className="w-full rounded-xl border border-amber-200 bg-amber-50 px-4 py-6 text-amber-800">
+                  <AlertCircle className="w-8 h-8 mx-auto mb-2" />
+                  <p className="font-medium">This QR code has expired</p>
+                  <p className="text-xs mt-1">Generate a new code to continue checking in.</p>
+                </div>
+              ) : (
+                <>
+                  <div className="p-4 bg-white rounded-2xl border shadow-sm">
+                    <QRCodeSVG value={qrState.token} size={200} level="M" />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Expires in {formatCountdown(qrExpiresAtMs - nowMs)}
+                  </p>
+                </>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!canRefreshQr || qrMutation.isPending}
+                onClick={() => { if (qrBooking) qrMutation.mutate(qrBooking); }}
+              >
+                {qrMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : null}
                 Refresh QR
               </Button>
             </div>
@@ -428,24 +456,20 @@ function WaitlistCard({
 }
 
 function BookingCard({
-  booking, onCancel, cancelling, onShowQR, qrLoading,
+  booking, onCancel, cancelling, onShowQR, qrLoading, nowMs,
 }: {
   booking: Booking;
   onCancel: (id: string) => void;
   cancelling: boolean;
   onShowQR: () => void;
   qrLoading: boolean;
+  nowMs: number;
 }) {
   const cfg = STATUS_CONFIG[booking.status];
   const start = new Date(booking.startTime);
   const end = new Date(booking.endTime);
   const isPast = new Date(booking.endTime) < new Date();
   const canCancel = ["PENDING", "CONFIRMED"].includes(booking.status) && !isPast;
-  const now = new Date();
-  const canShowQR = booking.status === "CONFIRMED"
-    && !!booking.checkInWindow
-    && now >= new Date(booking.checkInWindow.opensAt)
-    && now <= new Date(booking.checkInWindow.closesAt);
 
   const formatDate = (d: Date) =>
     d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: "Asia/Bangkok" });
@@ -504,17 +528,7 @@ function BookingCard({
           </div>
 
           <div className="flex flex-col gap-2 shrink-0">
-            {canShowQR && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={onShowQR}
-                disabled={qrLoading}
-                className="text-blue-600 border-blue-200 hover:bg-blue-50"
-              >
-                {qrLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <><QrCode className="w-3.5 h-3.5 mr-1" />QR Code</>}
-              </Button>
-            )}
+            <BookingQrAction booking={booking} nowMs={nowMs} loading={qrLoading} onShowQr={onShowQR} />
             {canCancel && (
               <Button
                 size="sm"
