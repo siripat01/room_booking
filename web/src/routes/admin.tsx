@@ -11,12 +11,12 @@ import {
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/admin")({
-  beforeLoad: async ({ location }) => {
+  beforeLoad: async ({ context: { queryClient }, location }) => {
     if (typeof window === "undefined") return;
     try {
-      const session = await authClient.getSession();
-      if (!session.data?.user) throw redirect({ to: "/", search: { redirect: location.pathname } });
-      if ((session.data.user as any).role !== "adminRole") throw redirect({ to: "/home" });
+      const user = await queryClient.ensureQueryData(sessionQuery());
+      if (!user) throw redirect({ to: "/", search: { redirect: location.pathname } });
+      if (!user.isAdmin) throw redirect({ to: "/home" });
     } catch (e: any) {
       if (e?.isRedirect) throw e;
       throw redirect({ to: "/", search: { redirect: location.pathname } });
@@ -86,7 +86,7 @@ function AdminLayout() {
         {user && (
           <div className="flex items-center gap-2.5 px-3 py-2 mb-2">
             {user.image ? (
-              <img src={user.image} alt={user.name} className="w-7 h-7 rounded-full object-cover shrink-0" />
+              <img src={user.image} alt={user.name} loading="lazy" decoding="async" className="w-7 h-7 rounded-full object-cover shrink-0" />
             ) : (
               <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-semibold shrink-0">
                 {initials}
