@@ -8,6 +8,7 @@ import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { CheckCircle2, Loader2, Zap } from "lucide-react";
 import { toast } from "sonner";
+import { apiUrl } from "../lib/api";
 
 export const Route = createFileRoute("/pricing")({
   beforeLoad: async ({ context: { queryClient }, location }) => {
@@ -44,7 +45,7 @@ function PricingPage() {
   const { data: planData } = useQuery({
     queryKey: ["my-plan"],
     queryFn: async () => {
-      const res = await fetch("/api/users/me/plan", { credentials: "include" });
+      const res = await fetch(apiUrl("/api/users/me/plan"), { credentials: "include" });
       if (!res.ok) throw new Error("Failed");
       return res.json() as Promise<{ plan: string; planExpiresAt: string | null }>;
     },
@@ -53,7 +54,7 @@ function PricingPage() {
 
   const checkoutMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch("/api/subscription/checkout", { method: "POST", credentials: "include" });
+      const res = await fetch(apiUrl("/api/subscription/checkout"), { method: "POST", credentials: "include" });
       if (!res.ok) throw new Error("Failed");
       const { url } = await res.json();
       return url as string;
@@ -64,7 +65,7 @@ function PricingPage() {
 
   const portalMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch("/api/subscription/portal", { method: "POST", credentials: "include" });
+      const res = await fetch(apiUrl("/api/subscription/portal"), { method: "POST", credentials: "include" });
       if (!res.ok) throw new Error("Failed");
       const { url } = await res.json();
       return url as string;

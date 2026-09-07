@@ -8,6 +8,8 @@ const getApiUrl = () => {
   return process.env.API_URL || "http://localhost:3000";
 };
 
+export const apiUrl = (path: string) => `${getApiUrl().replace(/\/$/, "")}${path}`;
+
 async function fetchWithBanCheck(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const res = await fetch(input, init);
   if (res.status === 403) {

@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState, useCallback } from "react";
 import jsQR from "jsqr";
+import { apiUrl } from "../lib/api";
 import { RefreshCw, CheckCircle, XCircle, Camera, Plus, X } from "lucide-react";
 
 export const Route = createFileRoute("/kiosk/$deviceId")({
@@ -49,7 +50,7 @@ function fmtDate() {
 }
 
 async function kioskFetch(path: string, deviceKey: string, options?: RequestInit) {
-  return fetch(`/api${path}`, {
+  return fetch(apiUrl(`/api${path}`), {
     ...options,
     headers: {
       "X-Device-Key": deviceKey,

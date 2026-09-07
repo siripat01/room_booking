@@ -1,6 +1,5 @@
 import { Elysia } from "elysia";
 import { auth } from "../../libs/auth";
-import prisma from "../../libs/db";
 
 export const betterAuth = new Elysia({ name: "better-auth" })
   .mount(auth.handler)
@@ -10,16 +9,16 @@ export const betterAuth = new Elysia({ name: "better-auth" })
         const session = await auth.api.getSession({ headers });
         if (!session) return status(401);
 
-        const dbUser = await prisma.user.findUnique({
-          where: { id: session.user.id },
-          select: { banned: true, banReason: true },
-        });
-        if (dbUser?.banned) {
-          return status(403, { error: "banned", reason: dbUser.banReason ?? "ไม่ระบุเหตุผล" });
+        // getSession reads the current user row, including the Better Auth admin
+        // plugin's ban fields. Avoid a second sequential user lookup on every API
+        // request; the session lookup remains the source of truth.
+        const user = session.user as typeof session.user & { banned?: boolean | null; banReason?: string | null };
+        if (user.banned) {
+          return status(403, { error: "banned", reason: user.banReason ?? "ไม่ระบุเหตุผล" });
         }
 
         return {
-          user: session.user,
+          user,
           session: session.session,
         };
       },

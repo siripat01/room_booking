@@ -77,8 +77,16 @@ export class JobHealthService {
       staleBackground,
       staleNotification,
     ] = await Promise.all([
-      this.prisma.backgroundJob.groupBy({ by: ["status"], _count: { _all: true } }),
-      this.prisma.notificationJob.groupBy({ by: ["status"], _count: { _all: true } }),
+      this.prisma.backgroundJob.groupBy({
+        by: ["status"],
+        where: { status: { in: ["PENDING", "RETRY", "PROCESSING", "FAILED"] } },
+        _count: { _all: true },
+      }),
+      this.prisma.notificationJob.groupBy({
+        by: ["status"],
+        where: { status: { in: ["PENDING", "RETRY", "PROCESSING", "FAILED"] } },
+        _count: { _all: true },
+      }),
       this.prisma.backgroundJob.findFirst({
         where: { status: { in: ["PENDING", "RETRY"] }, availableAt: { lte: now } },
         orderBy: { availableAt: "asc" },

@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCurrentUser } from "../lib/useCurrentUser";
 import { sessionQuery, waitlistQuery, type BookingStatus, type Booking, type BookingListResponse, type WaitlistEntry } from "../lib/queries";
-import { app } from "../lib/api";
+import { apiUrl, app } from "../lib/api";
 import { Navbar } from "../components/Navbar";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -124,7 +124,7 @@ function BookingsPage() {
 
   const leaveWaitlistMutation = useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(`/api/bookings/waitlist/${id}`, { method: "DELETE", credentials: "include" });
+      const res = await fetch(apiUrl(`/api/bookings/waitlist/${id}`), { method: "DELETE", credentials: "include" });
       if (!res.ok) throw new Error("Failed to leave waitlist");
     },
     onSuccess: () => {
@@ -136,7 +136,7 @@ function BookingsPage() {
 
   const qrMutation = useMutation({
     mutationFn: async (booking: Booking) => {
-      const res = await fetch(`/api/bookings/${booking.id}/qr`, { method: "POST", credentials: "include" });
+      const res = await fetch(apiUrl(`/api/bookings/${booking.id}/qr`), { method: "POST", credentials: "include" });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || "Failed to generate QR code");

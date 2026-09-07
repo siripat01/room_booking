@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { devicesQuery, roomsQuery, type AdminDevice } from "../../lib/queries";
-import { app } from "../../lib/api";
+import { apiUrl, app } from "../../lib/api";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
@@ -114,7 +114,7 @@ function AdminDevicesPage() {
 
   const revokeMutation = useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(`/api/devices/${id}/revoke`, { method: "POST", credentials: "include" });
+      const res = await fetch(apiUrl(`/api/devices/${id}/revoke`), { method: "POST", credentials: "include" });
       if (!res.ok) throw new Error("Failed to revoke device");
     },
     onSuccess: () => {
@@ -127,7 +127,7 @@ function AdminDevicesPage() {
 
   const reactivateMutation = useMutation({
     mutationFn: async (device: AdminDevice) => {
-      const res = await fetch(`/api/devices/${device.id}/reactivate`, { method: "POST", credentials: "include" });
+      const res = await fetch(apiUrl(`/api/devices/${device.id}/reactivate`), { method: "POST", credentials: "include" });
       if (!res.ok) throw new Error("Failed to reactivate device");
       return { ...(await res.json()), deviceName: device.name };
     },
@@ -159,7 +159,7 @@ function AdminDevicesPage() {
 
   const pairMutation = useMutation({
     mutationFn: async (id: string) => {
-      const res = await fetch(`/api/devices/${id}/generate-pairing`, { method: "POST", credentials: "include" });
+      const res = await fetch(apiUrl(`/api/devices/${id}/generate-pairing`), { method: "POST", credentials: "include" });
       if (!res.ok) throw new Error("Failed to generate pairing code");
       return res.json() as Promise<{ code: string; expiresAt: string }>;
     },

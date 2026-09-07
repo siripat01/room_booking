@@ -1,13 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  adminStatsQuery,
-  adminBookingsQuery,
-  reportsOverviewQuery,
-  reportsBookingsSummaryQuery,
-  reportsPeakHoursQuery,
-} from "../../lib/queries";
+import { adminDashboardQuery } from "../../lib/queries";
 import { app } from "../../lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
@@ -26,13 +20,7 @@ import {
 export const Route = createFileRoute("/admin/")({
   loader: ({ context: { queryClient } }) => {
     if (typeof window === "undefined") return;
-    return Promise.all([
-      queryClient.ensureQueryData(adminStatsQuery()),
-      queryClient.ensureQueryData(adminBookingsQuery({ status: "PENDING" })),
-      queryClient.ensureQueryData(reportsOverviewQuery()),
-      queryClient.ensureQueryData(reportsBookingsSummaryQuery()),
-      queryClient.ensureQueryData(reportsPeakHoursQuery()),
-    ]);
+    return queryClient.ensureQueryData(adminDashboardQuery());
   },
   component: AdminDashboard,
 });
@@ -56,13 +44,14 @@ const STAT_CARDS = [
 ] as const;
 
 function AdminDashboard() {
-  useRealtimeInvalidation({ queryKeys: [["admin"], ["reports"], ["rooms"]] });
+  useRealtimeInvalidation({ queryKeys: [["admin-dashboard"], ["rooms"]] });
   const qc = useQueryClient();
-  const { data: stats } = useQuery(adminStatsQuery());
-  const { data: bookingsData } = useQuery(adminBookingsQuery({ status: "PENDING" }));
-  const { data: overview } = useQuery(reportsOverviewQuery());
-  const { data: summary } = useQuery(reportsBookingsSummaryQuery());
-  const { data: peakHours } = useQuery(reportsPeakHoursQuery());
+  const { data: dashboard } = useQuery(adminDashboardQuery());
+  const stats = dashboard?.stats;
+  const bookingsData = dashboard?.bookings;
+  const overview = dashboard?.overview;
+  const summary = dashboard?.summary;
+  const peakHours = dashboard?.peakHours;
 
   const pendingBookings: Booking[] = ((bookingsData as any)?.bookings ?? []).slice(0, 5);
 
@@ -71,7 +60,7 @@ function AdminDashboard() {
       const { error } = await (app.api.bookings as any)[id].approve.patch();
       if (error) throw error;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin"] }); toast.success("Booking approved"); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin-dashboard"] }); toast.success("Booking approved"); },
     onError: () => toast.error("Failed to approve"),
   });
 
@@ -80,7 +69,7 @@ function AdminDashboard() {
       const { error } = await (app.api.bookings as any)[id].reject.patch({ reason: "Rejected by admin" });
       if (error) throw error;
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin"] }); toast.success("Booking rejected"); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["admin-dashboard"] }); toast.success("Booking rejected"); },
     onError: () => toast.error("Failed to reject"),
   });
 

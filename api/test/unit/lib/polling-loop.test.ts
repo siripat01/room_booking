@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { startPollingLoop } from "../../../src/lib/polling-loop";
+import { startAdaptivePollingLoop, startPollingLoop } from "../../../src/lib/polling-loop";
 
 test("polling loop prevents overlapping runs and waits for in-flight work on stop", async () => {
   let runs = 0;
@@ -44,4 +44,21 @@ test("polling loop reports task failures and remains stoppable", async () => {
   await loop.stop();
   expect(errors).toHaveLength(1);
   expect(errors[0]).toBeInstanceOf(Error);
+});
+
+test("adaptive polling waits longer after an idle run", async () => {
+  let runs = 0;
+  const loop = startAdaptivePollingLoop(
+    async () => {
+      runs += 1;
+      return false;
+    },
+    1,
+    50,
+    () => undefined,
+  );
+
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  expect(runs).toBe(1);
+  await loop.stop();
 });

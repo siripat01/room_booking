@@ -1,4 +1,4 @@
-import { app } from "./api";
+import { apiUrl, app } from "./api";
 import { authClient } from "./auth";
 import type { UserRole } from "./useCurrentUser";
 
@@ -87,7 +87,7 @@ export const bookingQuery = (id: string) => ({
 export const bookingSeriesQuery = () => ({
   queryKey: ["booking-series"],
   queryFn: async () => {
-    const response = await fetch("/api/booking-series", { credentials: "include" });
+    const response = await fetch(apiUrl("/api/booking-series"), { credentials: "include" });
     if (!response.ok) throw new Error("Failed to fetch recurring bookings");
     return response.json() as Promise<BookingSeries[]>;
   },
@@ -116,7 +116,7 @@ export const bookingTimelineQuery = (id: string | null) => ({
   enabled: Boolean(id),
   queryFn: async () => {
     if (!id) return [] as BookingTimelineEvent[];
-    const response = await fetch(`/api/bookings/${encodeURIComponent(id)}/timeline`, {
+    const response = await fetch(apiUrl(`/api/bookings/${encodeURIComponent(id)}/timeline`), {
       credentials: "include",
     });
     if (!response.ok) throw new Error("Failed to load booking timeline");
@@ -141,6 +141,21 @@ export const adminStatsQuery = () => ({
     const { data, error } = await (app.api.bookings as any).stats.get();
     if (error) throw error;
     return data as AdminStats;
+  },
+});
+
+export const adminDashboardQuery = () => ({
+  queryKey: ["admin-dashboard"],
+  queryFn: async () => {
+    const { data, error } = await (app.api.reports as any).dashboard.get();
+    if (error) throw error;
+    return data as {
+      stats: { totalRooms: number; pendingBookings: number; totalUsers: number; confirmedToday: number };
+      bookings: BookingListResponse;
+      overview: { popularRooms: { room?: { name: string; floor: string }; bookingCount: number }[] };
+      summary: { daily: { date: string; count: number }[] };
+      peakHours: { hour: number; label: string; count: number }[];
+    };
   },
 });
 
@@ -312,7 +327,7 @@ export type WaitlistEntry = {
 export const waitlistQuery = () => ({
   queryKey: ["waitlist"],
   queryFn: async () => {
-    const res = await fetch("/api/bookings/waitlist", { credentials: "include" });
+    const res = await fetch(apiUrl("/api/bookings/waitlist"), { credentials: "include" });
     if (!res.ok) throw new Error("Failed to fetch waitlist");
     return res.json() as Promise<WaitlistEntry[]>;
   },

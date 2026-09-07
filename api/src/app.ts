@@ -17,8 +17,19 @@ import roomRoutes from "./room/room.route";
 import { subscriptionRoutes } from "./subscription/subscription.route";
 import userRoutes from "./user/user.route";
 
+const requestStartedAt = new WeakMap<Request, number>();
+
 export async function createApp() {
   return new Elysia({ prefix: "/api" })
+    .onRequest(({ request }) => {
+      requestStartedAt.set(request, performance.now());
+    })
+    .onAfterHandle(({ request, set }) => {
+      const startedAt = requestStartedAt.get(request);
+      if (startedAt !== undefined) {
+        set.headers["server-timing"] = `app;dur=${(performance.now() - startedAt).toFixed(1)}`;
+      }
+    })
     .use(
       cors({
         origin: process.env.NODE_ENV === "production"

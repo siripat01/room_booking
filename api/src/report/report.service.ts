@@ -1,7 +1,53 @@
 import type { PrismaClient } from "../../generated/prisma/client";
+import { bangkokDayBounds, getBangkokDateTime } from "../lib/bangkok-time";
 
 export class ReportService {
     constructor(private prisma: PrismaClient) { }
+
+    async getDashboard() {
+        const today = bangkokDayBounds(getBangkokDateTime(new Date()).date);
+        const [stats, pending, overview, summary, peakHours] = await Promise.all([
+            Promise.all([
+                this.prisma.room.count({ where: { isActive: true } }),
+                this.prisma.booking.count({ where: { status: "PENDING" } }),
+                this.prisma.user.count(),
+                this.prisma.booking.count({
+                    where: { status: "CONFIRMED", startTime: { gte: today.start, lt: today.end } },
+                }),
+            ]),
+            Promise.all([
+                this.prisma.booking.findMany({
+                    where: { status: "PENDING" },
+                    include: {
+                        room: { select: { name: true, floor: true } },
+                        user: { select: { name: true, email: true, image: true } },
+                    },
+                    orderBy: { createdAt: "desc" },
+                    take: 30,
+                }),
+                this.prisma.booking.count({ where: { status: "PENDING" } }),
+            ]),
+            this.getOverview(),
+            this.getBookingsSummary(),
+            this.getPeakHours(),
+        ]);
+        const [totalRooms, pendingBookings, totalUsers, confirmedToday] = stats;
+        const [bookings, total] = pending;
+
+        return {
+            stats: { totalRooms, pendingBookings, totalUsers, confirmedToday },
+            bookings: {
+                bookings,
+                total,
+                page: 1,
+                limit: 30,
+                totalPages: Math.max(1, Math.ceil(total / 30)),
+            },
+            overview,
+            summary,
+            peakHours,
+        };
+    }
 
     async getOverview(from?: string, to?: string, roomId?: string) {
         const dateFilter = this.dateFilter(from, to);

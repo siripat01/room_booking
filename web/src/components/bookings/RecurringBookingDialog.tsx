@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CalendarRange, Loader2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
+import { apiUrl } from "../../lib/api";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import {
@@ -67,7 +68,7 @@ function weekdayForDate(date: string): Weekday {
 }
 
 async function request<T>(url: string, body: unknown): Promise<T> {
-  const response = await fetch(url, {
+  const response = await fetch(apiUrl(url), {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
