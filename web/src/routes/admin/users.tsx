@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { adminUsersQuery, type AdminUser } from "../../lib/queries";
 import { app } from "../../lib/api";
@@ -26,10 +26,19 @@ const ROLE_OPTIONS: { value: UserRole; label: string }[] = [
 
 function AdminUsersPage() {
   const qc = useQueryClient();
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [banTarget, setBanTarget] = useState<AdminUser | null>(null);
   const [banReason, setBanReason] = useState("");
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [searchInput]);
 
   const { data, isLoading: loading } = useQuery(adminUsersQuery({ search, page }));
   const users: AdminUser[] = (data as any)?.users ?? [];
@@ -74,11 +83,6 @@ function AdminUsersPage() {
     onError: () => toast.error("Failed to unban user"),
   });
 
-  function handleSearch(value: string) {
-    setSearch(value);
-    setPage(1);
-  }
-
   const from = total === 0 ? 0 : (page - 1) * 20 + 1;
   const to = Math.min(page * 20, total);
 
@@ -94,8 +98,8 @@ function AdminUsersPage() {
 
       <div className="relative max-w-sm mb-5">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input placeholder="Search by name or email…" value={search}
-          onChange={(e) => handleSearch(e.target.value)} className="pl-9 border-slate-200 bg-white" />
+        <Input placeholder="Search by name or email…" value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)} className="pl-9 border-slate-200 bg-white" />
       </div>
 
       {loading ? (
@@ -129,7 +133,7 @@ function AdminUsersPage() {
                     <td className="px-4 py-3.5">
                       <div className="flex items-center gap-2.5">
                         {u.image ? (
-                          <img src={u.image} alt={u.name} className="w-8 h-8 rounded-full object-cover shrink-0 ring-1 ring-slate-200" />
+                          <img src={u.image} alt={u.name} loading="lazy" decoding="async" className="w-8 h-8 rounded-full object-cover shrink-0 ring-1 ring-slate-200" />
                         ) : (
                           <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-semibold shrink-0">
                             {initials(u.name)}
