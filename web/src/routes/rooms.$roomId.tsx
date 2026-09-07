@@ -383,8 +383,8 @@ function RoomDetailPage() {
                       </p>
                       <p className="text-sm text-muted-foreground mt-1">
                         {(booking as any).status === "CONFIRMED"
-                          ? "Your room is reserved. Check My Bookings for details."
-                          : "Your request is pending admin approval."}
+                          ? "Your room is reserved. Your QR will be available in My Bookings 10 minutes before the start time."
+                          : "Your request is pending admin approval. After approval, your QR will be available 10 minutes before the start time."}
                       </p>
                     </div>
                     <div className="flex flex-col gap-2 pt-1">
