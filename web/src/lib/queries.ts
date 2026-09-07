@@ -2,6 +2,10 @@ import { apiUrl, app } from "./api";
 import { authClient } from "./auth";
 import type { UserRole } from "./useCurrentUser";
 
+const THIRTY_SECONDS = 30_000;
+const FIVE_MINUTES = 5 * 60_000;
+const THIRTY_MINUTES = 30 * 60_000;
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
 export const sessionQuery = () => ({
@@ -26,7 +30,7 @@ export const sessionQuery = () => ({
       plan: (u.plan as string | null) ?? "FREE",
     };
   },
-  staleTime: 1000 * 60 * 5, // 5 min
+  staleTime: FIVE_MINUTES,
 });
 
 // ── Rooms ─────────────────────────────────────────────────────────────────────
@@ -38,6 +42,8 @@ export const roomsQuery = () => ({
     if (error) throw error;
     return data as Room[];
   },
+  staleTime: FIVE_MINUTES,
+  gcTime: THIRTY_MINUTES,
 });
 
 export const roomQuery = (id: string) => ({
@@ -47,6 +53,8 @@ export const roomQuery = (id: string) => ({
     if (error) throw error;
     return data as Room;
   },
+  staleTime: FIVE_MINUTES,
+  gcTime: THIRTY_MINUTES,
 });
 
 export const roomAvailabilityQuery = (id: string, date: string) => ({
@@ -56,6 +64,7 @@ export const roomAvailabilityQuery = (id: string, date: string) => ({
     if (error) throw error;
     return data as RoomAvailability;
   },
+  staleTime: THIRTY_SECONDS,
 });
 
 // ── Bookings ──────────────────────────────────────────────────────────────────
@@ -73,6 +82,7 @@ export const bookingsQuery = (params?: { status?: string; page?: number }) => ({
     if (error) throw error;
     return data as BookingListResponse;
   },
+  staleTime: THIRTY_SECONDS,
 });
 
 export const bookingQuery = (id: string) => ({
@@ -82,6 +92,7 @@ export const bookingQuery = (id: string) => ({
     if (error) throw error;
     return data as Booking;
   },
+  staleTime: THIRTY_SECONDS,
 });
 
 export const bookingSeriesQuery = () => ({
@@ -91,25 +102,35 @@ export const bookingSeriesQuery = () => ({
     if (!response.ok) throw new Error("Failed to fetch recurring bookings");
     return response.json() as Promise<BookingSeries[]>;
   },
+  staleTime: THIRTY_SECONDS,
 });
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
 
-export const adminBookingsQuery = (params?: { status?: string; page?: number; search?: string }) => ({
-  queryKey: ["admin", "bookings", params],
-  queryFn: async () => {
-    const { data, error } = await (app.api.bookings as any).get({
-      query: {
-        status: params?.status,
-        page: params?.page?.toString(),
-        limit: "30",
-        search: params?.search,
-      },
-    });
-    if (error) throw error;
-    return data as BookingListResponse;
-  },
-});
+export const adminBookingsQuery = (
+  params: { status?: string; page?: number; search?: string } = {},
+) => {
+  const status = params.status ?? "";
+  const page = params.page ?? 1;
+  const search = params.search?.trim() ?? "";
+
+  return {
+    queryKey: ["admin", "bookings", status, page, search],
+    queryFn: async () => {
+      const { data, error } = await (app.api.bookings as any).get({
+        query: {
+          status: status || undefined,
+          page: page.toString(),
+          limit: "30",
+          search: search || undefined,
+        },
+      });
+      if (error) throw error;
+      return data as BookingListResponse;
+    },
+    staleTime: THIRTY_SECONDS,
+  };
+};
 
 export const bookingTimelineQuery = (id: string | null) => ({
   queryKey: ["admin", "bookings", id, "timeline"],
@@ -122,18 +143,33 @@ export const bookingTimelineQuery = (id: string | null) => ({
     if (!response.ok) throw new Error("Failed to load booking timeline");
     return response.json() as Promise<BookingTimelineEvent[]>;
   },
+  staleTime: THIRTY_SECONDS,
 });
 
-export const adminUsersQuery = (params?: { search?: string; role?: string; page?: number }) => ({
-  queryKey: ["admin", "users", params],
-  queryFn: async () => {
-    const { data, error } = await (app.api.users as any).get({
-      query: { search: params?.search, role: params?.role, page: params?.page?.toString(), limit: "20" },
-    });
-    if (error) throw error;
-    return data as UserListResponse;
-  },
-});
+export const adminUsersQuery = (
+  params: { search?: string; role?: string; page?: number } = {},
+) => {
+  const search = params.search?.trim() ?? "";
+  const role = params.role ?? "";
+  const page = params.page ?? 1;
+
+  return {
+    queryKey: ["admin", "users", search, role, page],
+    queryFn: async () => {
+      const { data, error } = await (app.api.users as any).get({
+        query: {
+          search: search || undefined,
+          role: role || undefined,
+          page: page.toString(),
+          limit: "20",
+        },
+      });
+      if (error) throw error;
+      return data as UserListResponse;
+    },
+    staleTime: THIRTY_SECONDS,
+  };
+};
 
 export const adminStatsQuery = () => ({
   queryKey: ["admin", "stats"],
@@ -142,6 +178,7 @@ export const adminStatsQuery = () => ({
     if (error) throw error;
     return data as AdminStats;
   },
+  staleTime: THIRTY_SECONDS,
 });
 
 export const adminDashboardQuery = () => ({
@@ -157,6 +194,7 @@ export const adminDashboardQuery = () => ({
       peakHours: { hour: number; label: string; count: number }[];
     };
   },
+  staleTime: THIRTY_SECONDS,
 });
 
 export const devicesQuery = () => ({
@@ -166,6 +204,7 @@ export const devicesQuery = () => ({
     if (error) throw error;
     return data as AdminDevice[];
   },
+  staleTime: THIRTY_SECONDS,
 });
 
 export const reportsOverviewQuery = (from?: string, to?: string) => ({
@@ -175,6 +214,7 @@ export const reportsOverviewQuery = (from?: string, to?: string) => ({
     if (error) throw error;
     return data as ReportsOverview;
   },
+  staleTime: THIRTY_SECONDS,
 });
 
 export const reportsBookingsSummaryQuery = (from?: string, to?: string) => ({
@@ -184,6 +224,7 @@ export const reportsBookingsSummaryQuery = (from?: string, to?: string) => ({
     if (error) throw error;
     return data as { byStatus: { status: string; count: number }[]; daily: { date: string; count: number }[] };
   },
+  staleTime: THIRTY_SECONDS,
 });
 
 export const reportsPeakHoursQuery = (from?: string, to?: string) => ({
@@ -193,6 +234,7 @@ export const reportsPeakHoursQuery = (from?: string, to?: string) => ({
     if (error) throw error;
     return data as { hour: number; label: string; count: number }[];
   },
+  staleTime: THIRTY_SECONDS,
 });
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -331,6 +373,7 @@ export const waitlistQuery = () => ({
     if (!res.ok) throw new Error("Failed to fetch waitlist");
     return res.json() as Promise<WaitlistEntry[]>;
   },
+  staleTime: THIRTY_SECONDS,
 });
 
 export type AdminDevice = {
